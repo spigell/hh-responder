@@ -18,7 +18,7 @@ hh-responder uses [vacancies api](https://github.com/hhru/api/blob/master/docs_e
 example of config file:
 ```yaml
 search:
-	# Documentation for search parameters - https://github.com/hhru/api/blob/master/docs_eng/vacancies.md
+    # Documentation for search parameters - https://github.com/hhru/api/blob/master/docs_eng/vacancies.md
     clusters: false
     order_by: publication_time
     areas:
@@ -40,12 +40,12 @@ search:
         - flexible
     period: 30
 apply:
-	# your resume title.
-	resume: Middle SRE
-	# your cover letter.
-	message: "Hello, I'm interested in this vacancy. Please consider my resume."
-	exclude:
-		# exclude vacancies if a employer in the list.
+    # your resume title.
+    resume: Middle SRE
+    # your cover letter.
+    message: "Hello, I'm interested in this vacancy. Please consider my resume."
+    exclude:
+        # exclude vacancies if a employer in the list.
         employers:
         # Test employer - https://hh.ru/employer/3331116
         - 3331116
