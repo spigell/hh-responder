@@ -1,0 +1,30 @@
+# Documentation for search api - https://github.com/hhru/api/blob/master/docs_eng/vacancies.md
+search:
+  clusters: false
+  order_by: publication_time
+  areas: 
+    - 113 # Russia
+    - 1   # Moscow
+    - 28  # Georgia
+    - 13  # Armenia
+  text: "Тестовая вакансия не откликаться вообще"
+  search_field: name
+  schedules:
+    - remote
+    - fullDay
+    - flexible
+  period: 30
+
+apply:
+  # title of your resume
+  resume: "DevOps engineer"
+  message: |
+    "
+    Greetings! This is a cover letter for your vacancy. Response made on the public api HH.ru
+
+    Здравствуйте! Это сопроводительное письмо для вашей вакансии. Отклик сделан на публичное api HH.ru
+    "
+  exclude:
+    employers: 
+      # Test employer
+      - 3331116
