@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/spigell/hh-responder/internal/headhunter"
@@ -45,7 +46,7 @@ func run(cmd *cobra.Command) {
 
 	logger, err := logger.New(viper.GetBool("json"), viper.GetBool("debug"))
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("creating a logger: %s", err))
+		log.Fatal(fmt.Sprintf("creating a logger: %s", err))
 	}
 
 	config, err := getConfig()
