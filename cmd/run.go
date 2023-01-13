@@ -43,7 +43,7 @@ func init() {
 func run(cmd *cobra.Command) {
 	ctx := context.Background()
 
-	logger, err := logger.New(viper.GetBool("debug"))
+	logger, err := logger.New(viper.GetBool("json"), viper.GetBool("debug"))
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("creating a logger: %s", err))
 	}

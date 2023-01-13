@@ -5,15 +5,20 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func New(debug bool) (*zap.Logger, error) {
+func New(json bool, debug bool) (*zap.Logger, error) {
 	level := zapcore.InfoLevel
+	encoding := "console"
+
+	if json {
+		encoding = "json"
+	}
 
 	if debug {
 		level = zapcore.DebugLevel
 	}
 
 	cfg := zap.Config{
-		Encoding:         "console",
+		Encoding:         encoding,
 		Level:            zap.NewAtomicLevelAt(level),
 		OutputPaths:      []string{"stdout"},
 		ErrorOutputPaths: []string{"stderr"},
