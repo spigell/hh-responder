@@ -23,7 +23,7 @@ func New(json bool, debug bool) (*zap.Logger, error) {
 		OutputPaths:      []string{"stdout"},
 		ErrorOutputPaths: []string{"stderr"},
 		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey: "message",
+			MessageKey: "step",
 
 			LevelKey:    "level",
 			EncodeLevel: zapcore.LowercaseLevelEncoder,
