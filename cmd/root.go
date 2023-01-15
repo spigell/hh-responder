@@ -47,8 +47,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "a config file (default is hh-responder.yaml in current directory)")
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "verbose/debug output")
 	rootCmd.PersistentFlags().BoolP("force", "f", false, "do not exlude vacancies if already applied")
+	rootCmd.PersistentFlags().BoolP("json", "j", false, "json format for logging")
 
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
+	viper.BindPFlag("json", rootCmd.PersistentFlags().Lookup("json"))
 }
 
 func initConfig() {
