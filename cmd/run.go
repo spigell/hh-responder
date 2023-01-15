@@ -38,6 +38,9 @@ var runCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(runCmd)
+
+	runCmd.Flags().BoolP("do-not-exclude-applied", "f", false, "do not exclude vacancies if already applied")
+	runCmd.Flags().BoolP("auto-aprove", "y", false, "do not ask for confirmation if found suitable vacancies")
 }
 
 // run is the main command for the cli.
@@ -72,14 +75,21 @@ func run(cmd *cobra.Command) {
 		return
 	}
 
+	// Specify default action. Do not ask for confirmation.
+	action := PromptYes
+
 	// main loop
 	for {
-		_, result, err := prompt.Run()
-		if err != nil {
-			logger.Fatal("exiting", zap.Error(err))
+		// without autoapprove flag redeclare the prompt result and ask for confirmation.
+		if cmd.Flag("auto-aprove").Value.String() == "false" {
+			var err error
+			_, action, err = prompt.Run()
+			if err != nil {
+				logger.Fatal("exiting", zap.Error(err))
+			}
 		}
 
-		switch result {
+		switch action {
 		case PromptYes:
 			resumes, err := hh.GetMineResumes()
 			if err != nil {
@@ -147,7 +157,7 @@ func getVacancies(hh *headhunter.Client, config *Config, cmd *cobra.Command, log
 		zap.Int("vacancies left", results.Len()),
 	)
 
-	if cmd.Flag("force").Value.String() == "true" {
+	if cmd.Flag("do-not-exclude-applied").Value.String() == "true" {
 		logger.Info("ignoring already applied vacancies", zap.String("reason", forceFlagSetMsg))
 	} else {
 		excluded := results.Exclude(headhunter.VacancyIDField, negotiations.VacanciesIDs())
