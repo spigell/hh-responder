@@ -68,7 +68,7 @@ func (c *Client) GetItems(url string, q url.Values) ([]Item, error) {
 			return nil, err
 		}
 
-		response, err := c.parseItemResponse(resp)
+		response, err = c.parseItemResponse(resp)
 		if err != nil {
 			return nil, err
 		}
