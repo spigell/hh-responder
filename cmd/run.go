@@ -24,7 +24,7 @@ const (
 	PromptBack                = "back"
 	PromptReportByEmployers   = "Report by employers"
 	PromptManualApply         = "Apply vacancies in manual mode"
-	PromptAppendToExcludeFile = "Append to exclude file"
+	PromptAppendToExcludeFile = "Append all vacancies to exclude file"
 	PromptVacanciesToFile     = "Dump vacancies to file"
 )
 
@@ -97,6 +97,8 @@ func run(cmd *cobra.Command) {
 			}
 		}
 
+		logger.Info("current list of vacancies", zap.Int("count", vacancies.Len()))
+
 		switch action {
 		case PromptYes:
 			err = apply(hh, *logger, config.Apply.Resume, vacancies, config.Apply.Message)
@@ -121,7 +123,7 @@ func run(cmd *cobra.Command) {
 				}
 
 				excludeFile := viper.GetString("exclude-file")
-				if excludeFile != "" {
+				if excludeFile != "" && vacancies.Len() != 0 {
 					items = append(items, PromptAppendToExcludeFile)
 				}
 
@@ -148,6 +150,8 @@ func run(cmd *cobra.Command) {
 					}
 
 					logger.Info("appended to exlude file", zap.String("filename", excludeFile))
+
+					vacancies.Exclude(headhunter.VacancyIDField, excluded.VacanciesIDs())
 
 				default:
 					if err != nil {
