@@ -57,7 +57,7 @@ func run(cmd *cobra.Command) {
 
 	logger, err := logger.New(viper.GetBool("json"), viper.GetBool("debug"))
 	if err != nil {
-		log.Fatal(fmt.Sprintf("creating a logger: %s", err))
+		log.Fatalf("creating a logger: %s", err)
 	}
 
 	config, err := getConfig()
@@ -77,7 +77,7 @@ func run(cmd *cobra.Command) {
 
 	vacancies, err := getVacancies(hh, config, cmd, logger)
 	if err != nil {
-		logger.Fatal("getting avaliable vacancies", zap.Error(err))
+		logger.Fatal("getting available vacancies", zap.Error(err))
 	}
 
 	if vacancies.Len() == 0 {
@@ -142,6 +142,9 @@ func run(cmd *cobra.Command) {
 
 				case PromptAppendToExcludeFile:
 					excluded, err := headhunter.GetExludedVacanciesFromFile(excludeFile)
+					if err != nil {
+						logger.Fatal("exiting", zap.Error(err))
+					}
 
 					excluded.Append(vacancies.ToExcluded())
 
@@ -235,7 +238,7 @@ func getVacancies(hh *headhunter.Client, config *Config, cmd *cobra.Command, log
 
 	negotiations, err := hh.GetNegotiations()
 	if err != nil {
-		return nil, fmt.Errorf("get my negotiations: %s", err)
+		return nil, fmt.Errorf("get my negotiations: %w", err)
 	}
 
 	logger.Info("excluding vacancies with test. It is impossible to apply them",
@@ -265,7 +268,7 @@ func getVacancies(hh *headhunter.Client, config *Config, cmd *cobra.Command, log
 	if excludeFile != "" {
 		excluded, err := headhunter.GetExludedVacanciesFromFile(excludeFile)
 		if err != nil {
-			return nil, fmt.Errorf("getting exluded vacancies from file: %s", err)
+			return nil, fmt.Errorf("getting exluded vacancies from file: %w", err)
 		}
 
 		excludedVacancies := results.Exclude(headhunter.VacancyIDField, excluded.VacanciesIDs())

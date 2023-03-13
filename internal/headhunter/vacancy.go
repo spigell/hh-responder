@@ -136,7 +136,7 @@ func (v *ExcludedVacancies) Append(s *ExcludedVacancies) {
 }
 
 func (v *ExcludedVacancies) VacanciesIDs() []string {
-	var ids []string
+	ids := make([]string, 0)
 	for _, vacancy := range v.Items {
 		ids = append(ids, vacancy.ID)
 	}
@@ -144,8 +144,7 @@ func (v *ExcludedVacancies) VacanciesIDs() []string {
 }
 
 func (v *ExcludedVacancies) ToFile(path string) error {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
-
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
