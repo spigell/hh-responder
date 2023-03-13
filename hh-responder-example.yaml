@@ -15,6 +15,9 @@ search:
     - flexible
   period: 30
 
+# /path/to/file to excluded vacancies. It may be empty but must exist.
+exclude-file: excluded.json
+
 apply:
   # title of your resume
   resume: "DevOps engineer"
