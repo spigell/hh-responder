@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
 
 const (
@@ -77,6 +78,17 @@ type Vacancy struct {
 	PublishedAt string `json:"published_at,omitempty"`
 }
 
+type ExcludedVacancies struct {
+	Items []*ExcludedVacancy
+}
+
+type ExcludedVacancy struct {
+	ID           string
+	URL          string
+	EmployerName string
+	ExcludedAt   time.Time
+}
+
 func (v *Vacancies) DumpToTmpFile() (string, error) {
 	file, err := os.CreateTemp("", "vacancies_*.json")
 	if err != nil {
@@ -90,6 +102,69 @@ func (v *Vacancies) DumpToTmpFile() (string, error) {
 		return "", err
 	}
 	return file.Name(), nil
+}
+
+func (v *Vacancies) ToExcluded() *ExcludedVacancies {
+	excluded := &ExcludedVacancies{}
+	for _, vacancy := range v.Items {
+		excluded.Items = append(excluded.Items, &ExcludedVacancy{
+			ID:           vacancy.ID,
+			URL:          vacancy.AlternateURL,
+			EmployerName: vacancy.Employer.Name,
+			ExcludedAt:   time.Now().UTC(),
+		})
+	}
+	return excluded
+}
+
+func GetExludedVacanciesFromFile(path string) (*ExcludedVacancies, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	if stat.Size() == 0 {
+		return &ExcludedVacancies{}, nil
+	}
+
+	var excluded ExcludedVacancies
+	if err := json.NewDecoder(file).Decode(&excluded); err != nil {
+		return nil, err
+	}
+	return &excluded, nil
+}
+
+func (v *ExcludedVacancies) Append(s *ExcludedVacancies) {
+	v.Items = append(v.Items, s.Items...)
+}
+
+func (v *ExcludedVacancies) VacanciesIDs() []string {
+	ids := make([]string, 0)
+	for _, vacancy := range v.Items {
+		ids = append(ids, vacancy.ID)
+	}
+	return ids
+}
+
+func (v *ExcludedVacancies) ToFile(path string) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	enc := json.NewEncoder(file)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (va *Vacancy) GetStringField(name string) string {
@@ -124,6 +199,15 @@ func (v *Vacancies) ReportByEmployer() map[string][]map[string]string {
 
 func (v *Vacancies) Len() int {
 	return len(v.Items)
+}
+
+func (v *Vacancies) FindByID(id string) *Vacancy {
+	for _, vacancy := range v.Items {
+		if vacancy.ID == id {
+			return vacancy
+		}
+	}
+	return nil
 }
 
 func (v *Vacancies) ExcludeWithTest() []string {

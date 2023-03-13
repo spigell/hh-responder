@@ -6,10 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	// Actual version can be specified in build command
-	version = "unknown"
-)
+// Actual version can be specified in build command.
+var version = "unknown"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",

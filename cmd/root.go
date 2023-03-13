@@ -3,7 +3,6 @@ package cmd
 import (
 	"log"
 
-
 	"github.com/spigell/hh-responder/internal/headhunter"
 
 	"github.com/spf13/cobra"
@@ -16,8 +15,9 @@ const (
 )
 
 type Config struct {
-	Search *headhunter.SearchParams `mapstructure:"search"`
-	Apply  *struct {
+	Search      *headhunter.SearchParams `mapstructure:"search"`
+	ExcludeFile string                   `mapstructure:"exclude-file"`
+	Apply       *struct {
 		Resume  string
 		Message string
 		Exclude *struct {
