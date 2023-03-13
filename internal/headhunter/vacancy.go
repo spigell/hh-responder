@@ -124,6 +124,15 @@ func GetExludedVacanciesFromFile(path string) (*ExcludedVacancies, error) {
 	}
 	defer file.Close()
 
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	if stat.Size() == 0 {
+		return &ExcludedVacancies{}, nil
+	}
+
 	var excluded ExcludedVacancies
 	if err := json.NewDecoder(file).Decode(&excluded); err != nil {
 		return nil, err
