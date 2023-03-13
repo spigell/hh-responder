@@ -73,6 +73,8 @@ func run(cmd *cobra.Command) {
 
 	hh := headhunter.New(ctx, logger, os.Getenv(hhTokenEnvVar))
 
+	logger.Info("starting the search", zap.String("search", config.Search.Text))
+
 	vacancies, err := getVacancies(hh, config, cmd, logger)
 	if err != nil {
 		logger.Fatal("getting avaliable vacancies", zap.Error(err))
