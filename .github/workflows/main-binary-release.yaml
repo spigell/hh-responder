@@ -1,0 +1,15 @@
+name: The prebuilt binaries release
+
+on:
+  push:
+    tags:
+      - '*'
+
+
+jobs:
+  test-workflow:
+    uses: spigell/my-shared-workflows/.github/workflows/golang-binary-release.yaml@spigel/feat/add-go-build
+    permissions:
+      contents: write
+    secrets:
+      gh-token: ${{ secrets.GITHUB_TOKEN }}

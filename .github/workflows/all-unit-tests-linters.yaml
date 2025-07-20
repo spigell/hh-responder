@@ -1,0 +1,12 @@
+name: Run tests and linter for all branches
+on:
+  push:
+    tags-ignore:
+      - '**'
+    branches:
+      - '**'
+
+jobs:
+  call-workflow:
+    name: Call the shared testing golang workflow
+    uses: spigell/my-shared-workflows/.github/workflows/golang-test-lint.yaml@main

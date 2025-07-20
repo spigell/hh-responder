@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -28,6 +29,8 @@ const (
 	PromptVacanciesToFile     = "Dump vacancies to file"
 )
 
+var errExit = errors.New("exit requested")
+
 var prompt = promptui.Select{
 	Label: "Procced?",
 	Items: []string{PromptYes, PromptNo, PromptReportByEmployers, PromptManualApply, PromptVacanciesToFile},
@@ -36,7 +39,7 @@ var prompt = promptui.Select{
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the hh-responder main command",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, _ []string) {
 		run(cmd)
 	},
 }
@@ -85,14 +88,10 @@ func run(cmd *cobra.Command) {
 		return
 	}
 
-	// Specify default action. Do not ask for confirmation.
 	action := PromptYes
-
-	// main loop
 	for {
-		// without autoapprove flag redeclare the prompt result and ask for confirmation.
+		var err error
 		if cmd.Flag("auto-aprove").Value.String() == "false" {
-			var err error
 			_, action, err = prompt.Run()
 			if err != nil {
 				logger.Fatal("exiting", zap.Error(err))
@@ -101,99 +100,98 @@ func run(cmd *cobra.Command) {
 
 		logger.Info("current list of vacancies", zap.Int("count", vacancies.Len()))
 
-		switch action {
-		case PromptYes:
-			err = apply(hh, *logger, config.Apply.Resume, vacancies, config.Apply.Message)
+		if err := handleAction(action, hh, logger, config, vacancies); err != nil {
+			if errors.Is(err, errExit) {
+				return
+			}
+			logger.Fatal("exiting", zap.Error(err))
+		}
+	}
+}
+
+func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies) error {
+	switch action {
+	case PromptYes:
+		return apply(hh, *logger, config.Apply.Resume, vacancies, config.Apply.Message)
+	case PromptNo:
+		logger.Info("exiting", zap.String("reason", "got no from prompt"))
+		return errExit
+	case PromptManualApply:
+		return manualApply(hh, logger, config, vacancies)
+	case PromptReportByEmployers:
+		pretty, _ := json.MarshalIndent(vacancies.ReportByEmployer(), "", "  ")
+		logger.Info(string(pretty), zap.Int("vacancies count", vacancies.Len()))
+		return nil
+	case PromptVacanciesToFile:
+		filename, err := vacancies.DumpToTmpFile()
+		if err != nil {
+			return fmt.Errorf("dump results to file: %w", err)
+		}
+		logger.Info("dumping result to file", zap.String("filename", filename))
+		return nil
+	default:
+		return fmt.Errorf("invalid action: %s", action)
+	}
+}
+
+func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies) error {
+	for {
+		items := make([]string, 0)
+		v := make([]*headhunter.Vacancy, 0)
+
+		for _, vc := range vacancies.Items {
+			items = append(items, fmt.Sprintf("%s %s / %s / %s",
+				vc.ID, vc.Name, vc.Employer.Name, vc.AlternateURL),
+			)
+		}
+
+		excludeFile := viper.GetString("exclude-file")
+		if excludeFile != "" && vacancies.Len() != 0 {
+			items = append(items, PromptAppendToExcludeFile)
+		}
+
+		vacancyPrompt := promptui.Select{
+			Label: "Choose a vacancy and press ENTER",
+			Items: append(items, PromptBack),
+		}
+
+		_, vacancySelected, err := vacancyPrompt.Run()
+		if err != nil {
+			return err
+		}
+
+		switch vacancySelected {
+		case PromptBack:
+			return nil
+		case PromptAppendToExcludeFile:
+			excluded, err := headhunter.GetExludedVacanciesFromFile(excludeFile)
 			if err != nil {
-				logger.Fatal("exiting", zap.Error(err))
+				return err
 			}
 
-		case PromptNo:
-			logger.Info("exiting", zap.String("reason", "got no from prompt"))
-			return
+			excluded.Append(vacancies.ToExcluded())
 
-		case PromptManualApply:
-		loop:
-			for {
-				items := make([]string, 0)
-				v := make([]*headhunter.Vacancy, 0)
-
-				for _, v := range vacancies.Items {
-					items = append(items, fmt.Sprintf("%s %s / %s / %s",
-						v.ID, v.Name, v.Employer.Name, v.AlternateURL),
-					)
-				}
-
-				excludeFile := viper.GetString("exclude-file")
-				if excludeFile != "" && vacancies.Len() != 0 {
-					items = append(items, PromptAppendToExcludeFile)
-				}
-
-				vacancyPrompt := promptui.Select{
-					Label: "Choose a vacancy and press ENTER",
-					Items: append(items, PromptBack),
-				}
-
-				_, vacancySelected, err := vacancyPrompt.Run()
-
-				switch vacancySelected {
-				case PromptBack:
-					break loop
-
-				case PromptAppendToExcludeFile:
-					excluded, err := headhunter.GetExludedVacanciesFromFile(excludeFile)
-					if err != nil {
-						logger.Fatal("exiting", zap.Error(err))
-					}
-
-					excluded.Append(vacancies.ToExcluded())
-
-					err = excluded.ToFile(excludeFile)
-
-					if err != nil {
-						logger.Fatal("exiting", zap.Error(err))
-					}
-
-					logger.Info("appended to exlude file", zap.String("filename", excludeFile))
-
-					vacancies.Exclude(headhunter.VacancyIDField, excluded.VacanciesIDs())
-
-				default:
-					if err != nil {
-						logger.Fatal("exiting", zap.Error(err))
-					}
-
-					vacancyID := strings.Split(vacancySelected, " ")[0]
-
-					v = append(v, vacancies.FindByID(vacancyID))
-
-					if v[0] == nil {
-						logger.Fatal("exiting", zap.String("There is no such vacancy id", vacancyID))
-					}
-
-					err = apply(hh, *logger, config.Apply.Resume, &headhunter.Vacancies{Items: v}, config.Apply.Message)
-					if err != nil {
-						logger.Fatal("exiting", zap.Error(err))
-					}
-
-					vacancies.Exclude(headhunter.VacancyIDField, []string{vacancyID})
-				}
+			if err = excluded.ToFile(excludeFile); err != nil {
+				return err
 			}
 
-		case PromptReportByEmployers:
-			pretty, _ := json.MarshalIndent(vacancies.ReportByEmployer(), "", "  ")
-			logger.Info(string(pretty), zap.Int("vacancies count", vacancies.Len()))
+			logger.Info("appended to exlude file", zap.String("filename", excludeFile))
 
-		case PromptVacanciesToFile:
-			filename, err := vacancies.DumpToTmpFile()
-			if err != nil {
-				logger.Fatal("dump results to file", zap.Error(err))
-			}
-
-			logger.Info("dumping result to file", zap.String("filename", filename))
-
+			vacancies.Exclude(headhunter.VacancyIDField, excluded.VacanciesIDs())
 		default:
-			logger.Fatal("something wrong happen. exiting")
+			vacancyID := strings.Split(vacancySelected, " ")[0]
+
+			v = append(v, vacancies.FindByID(vacancyID))
+
+			if v[0] == nil {
+				return fmt.Errorf("there is no such vacancy id %s", vacancyID)
+			}
+
+			if err = apply(hh, *logger, config.Apply.Resume, &headhunter.Vacancies{Items: v}, config.Apply.Message); err != nil {
+				return err
+			}
+
+			vacancies.Exclude(headhunter.VacancyIDField, []string{vacancyID})
 		}
 	}
 }
@@ -216,7 +214,6 @@ func apply(hh *headhunter.Client, logger zap.Logger, resumeName string, vacancie
 	}
 
 	err = hh.Apply(resume, vacancies, message)
-
 	if err != nil {
 		return err
 	}
