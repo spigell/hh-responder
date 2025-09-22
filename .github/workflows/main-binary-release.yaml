@@ -8,7 +8,7 @@ on:
 
 jobs:
   test-workflow:
-    uses: spigell/my-shared-workflows/.github/workflows/golang-binary-release.yaml@spigel/feat/add-go-build
+    uses: spigell/my-shared-workflows/.github/workflows/golang-binary-release.yaml@main
     permissions:
       contents: write
     secrets:
