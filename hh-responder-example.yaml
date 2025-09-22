@@ -28,6 +28,10 @@ apply:
     Здравствуйте! Это сопроводительное письмо для вашей вакансии. Отклик сделан на публичное api HH.ru
     "
   exclude:
-    employers: 
+    employers:
       # Test employer
       - 3331116
+
+# Optional custom user-agent header to send with requests to hh.ru API.
+# Defaults to the built-in hh-responder identifier when omitted.
+user-agent: "spigell/hh-responder (spigelly@gmail.com)"
