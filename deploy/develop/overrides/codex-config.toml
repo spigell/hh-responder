@@ -1,0 +1,11 @@
+model_provider = "openai"
+model = "gpt-5-codex"
+
+[model_providers.ollama]
+name = "Ollama"
+base_url = "http://192.168.1.10:30297/v1"
+query_params = { num_thread = "4" }
+
+model_reasoning_summary = "none"  # disable reasoning summaries
+model_reasoning_effort = "none"  # disable reasoning
+hide_agent_reasoning = false   # defaults to false
