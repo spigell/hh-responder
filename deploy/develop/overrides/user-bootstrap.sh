@@ -4,6 +4,8 @@ set -euo pipefail
 USER_NAME="spigell"
 USER_UID=7000
 USER_HOME="/home/${USER_NAME}"
+CODEX_CONFIG_SOURCE="/opt/codex-config/config.toml"
+CODEX_CONFIG_DEST="${USER_HOME}/.config/codex/config.toml"
 
 ensure_user() {
   if ! id -u "${USER_NAME}" >/dev/null 2>&1; then
@@ -15,7 +17,13 @@ ensure_user() {
 export PATH=/usr/local/share/fnm/aliases/default/bin:/usr/local/share/pyenv/shims:/usr/local/share/pyenv/bin:/usr/local/share/dotnet:~/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EOF
 
-  mkdir -p "${USER_HOME}"/{.home,.cache/gomod,.cache/gobuild,.cache/gopath,go/bin}
+  mkdir -p "${USER_HOME}"/{.home,.cache/gomod,.cache/gobuild,.cache/gopath,go/bin,.config/codex}
+
+  if [ -f "${CODEX_CONFIG_SOURCE}" ]; then
+    cp "${CODEX_CONFIG_SOURCE}" "${CODEX_CONFIG_DEST}"
+    chmod 600 "${CODEX_CONFIG_DEST}"
+  fi
+
   chown -R "${USER_UID}:${USER_UID}" "${USER_HOME}"
 
   cat >> "${USER_HOME}/.bashrc" <<'EOF'

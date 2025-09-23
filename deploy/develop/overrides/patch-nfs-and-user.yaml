@@ -21,6 +21,10 @@ spec:
       configMap:
         name: workbench-bootstrap
         defaultMode: 0755
+    - name: codex-config
+      configMap:
+        name: codex-config
+        defaultMode: 0644
   containers:
     - name: workbench
       command: ["/bin/bash","-c","/opt/bootstrap/user-bootstrap.sh main"]
@@ -37,4 +41,8 @@ spec:
       volumeMounts:
         - name: bootstrap
           mountPath: /opt/bootstrap
+          readOnly: true
+        - name: codex-config
+          mountPath: /opt/codex-config/config.toml
+          subPath: codex-config.toml
           readOnly: true
