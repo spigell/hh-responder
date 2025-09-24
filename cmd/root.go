@@ -17,6 +17,7 @@ const (
 type Config struct {
 	Search      *headhunter.SearchParams `mapstructure:"search"`
 	ExcludeFile string                   `mapstructure:"exclude-file"`
+	UserAgent   string                   `mapstructure:"user-agent"`
 	Apply       *struct {
 		Resume  string
 		Message string
