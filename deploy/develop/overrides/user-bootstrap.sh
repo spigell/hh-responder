@@ -4,7 +4,7 @@ set -euo pipefail
 USER_NAME="spigell"
 USER_UID=7000
 USER_HOME="/home/${USER_NAME}"
-CODEX_CONFIG_SOURCE="/opt/codex-config/config.toml"
+CODEX_CONFIG_SOURCE="/project/deploy/develop/overrides/codex-config.toml"
 CODEX_CONFIG_DEST="${USER_HOME}/.codex/config.toml"
 
 ensure_user() {
@@ -19,8 +19,9 @@ EOF
 
   mkdir -p "${USER_HOME}"/{.home,.cache/gomod,.cache/gobuild,.cache/gopath,go/bin,.codex}
 
-  cp "${CODEX_CONFIG_SOURCE}" "${CODEX_CONFIG_DEST}"
-  chmod 600 "${CODEX_CONFIG_DEST}"
+  rm -rf "${CODEX_CONFIG_DEST}"
+  ln -s "${CODEX_CONFIG_SOURCE}" "${CODEX_CONFIG_DEST}"
+  # chmod 600 "${CODEX_CONFIG_DEST}"
   
   chown -R "${USER_UID}:${USER_UID}" "${USER_HOME}"
 

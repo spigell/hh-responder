@@ -7,13 +7,3 @@ resources:
 
 patchesStrategicMerge:
   - patch-nfs-and-user.yaml
-
-configMapGenerator:
-  - name: workbench-bootstrap
-    namespace: hh-responder-codex-workbench
-    files:
-      - user-bootstrap.sh
-  - name: codex-config
-    namespace: hh-responder-codex-workbench
-    files:
-      - codex-config.toml

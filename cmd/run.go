@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/spigell/hh-responder/internal/headhunter"
@@ -74,7 +73,15 @@ func run(cmd *cobra.Command) {
 	pretty, _ := json.MarshalIndent(config, "", "  ")
 	logger.Debug(fmt.Sprintf("starting with config: \n %s", pretty))
 
-	hh := headhunter.New(ctx, logger, os.Getenv(hhTokenEnvVar))
+	if config == nil {
+		logger.Fatal("config is required")
+	}
+
+	if config.Token == "" {
+		logger.Fatal("headhunter token is missing", zap.String("hint", "set token in configuration file under 'token' key"))
+	}
+
+	hh := headhunter.New(ctx, logger, config.Token)
 
 	if config != nil && config.UserAgent != "" {
 		hh.UserAgent = config.UserAgent

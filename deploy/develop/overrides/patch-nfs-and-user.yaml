@@ -20,17 +20,9 @@ spec:
         claimName: codex-home
     - name: tmp
       emptyDir: {}
-    - name: bootstrap
-      configMap:
-        name: workbench-bootstrap
-        defaultMode: 0755
-    - name: codex-config
-      configMap:
-        name: codex-config
-        defaultMode: 0644
   containers:
     - name: workbench
-      command: ["/bin/bash","-c","/opt/bootstrap/user-bootstrap.sh main"]
+      command: ["/bin/bash","-c","/project/deploy/develop/overrides/user-bootstrap.sh main"]
       securityContext:
         capabilities:
             drop: ["ALL"]
@@ -42,12 +34,5 @@ spec:
             - SETUID
             - DAC_OVERRIDE
       volumeMounts:
-        - name: bootstrap
-          mountPath: /opt/bootstrap
-          readOnly: true
         - name: codex
           mountPath: /home/spigell/.codex
-        - name: codex-config
-          mountPath: /opt/codex-config/config.toml
-          subPath: codex-config.toml
-          readOnly: true

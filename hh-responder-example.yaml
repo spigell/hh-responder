@@ -1,4 +1,7 @@
 # Documentation for search api - https://github.com/hhru/api/blob/master/docs_eng/vacancies.md
+# Personal access token used for authenticated requests to hh.ru API.
+token: "put-your-token-here"
+
 search:
   clusters: false
   order_by: publication_time
