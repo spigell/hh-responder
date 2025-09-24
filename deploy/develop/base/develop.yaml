@@ -24,8 +24,8 @@ spec:
   # ---- Primary application container ----
   containers:
     - name: workbench
-      image: ghcr.io/spigell/codex-workbench:v0.39.0-d1bc78
-      workingDir: /projects
+      image: ghcr.io/spigell/codex-workbench:v0.39.0-ef09dc
+      workingDir: /project
       command:
         - /bin/bash
         - -c
@@ -34,8 +34,8 @@ spec:
           echo "================================="
           sleep infinity
       volumeMounts:
-        - name: projects
-          mountPath: /projects
+        - name: project
+          mountPath: /project
         - name: tmp
           mountPath: /tmp
       resources:
@@ -54,7 +54,7 @@ spec:
           type: RuntimeDefault
 
   volumes:
-    - name: projects
+    - name: project
       emptyDir: {}
     - name: tmp
       emptyDir: {}

@@ -18,10 +18,11 @@ export PATH=/usr/local/share/fnm/aliases/default/bin:/usr/local/share/pyenv/shim
 EOF
 
   mkdir -p "${USER_HOME}"/{.home,.cache/gomod,.cache/gobuild,.cache/gopath,go/bin,.codex}
-  chown -R "${USER_UID}:${USER_UID}" "${USER_HOME}"
 
   cp "${CODEX_CONFIG_SOURCE}" "${CODEX_CONFIG_DEST}"
   chmod 600 "${CODEX_CONFIG_DEST}"
+  
+  chown -R "${USER_UID}:${USER_UID}" "${USER_HOME}"
 
   cat >> "${USER_HOME}/.bashrc" <<'EOF'
 # Completions (ignore errors if not present)
@@ -32,7 +33,7 @@ EOF
 }
 
 run_as_user() { # $@ = command
-  su - "${USER_NAME}" -l -s /bin/bash -c "$*"
+  su "${USER_NAME}" -l -s /bin/bash -c "$*"
 }
 
 
@@ -41,7 +42,7 @@ case "${1:-}" in
     ensure_user
     echo ">>> Codex (local) for ${USER_NAME}"
     run_as_user "sleep infinity"
-    # run_as_user "codex"
+    # run_as_user "cd /project && whoami && codex"
     ;;
   *)
     echo "Usage: $0 {main}" >&2

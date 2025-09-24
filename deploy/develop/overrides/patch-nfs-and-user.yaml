@@ -11,7 +11,7 @@ spec:
   hostUsers: true
   volumes:
     - $patch: replace
-    - name: projects
+    - name: project
       nfs:
         server: 192.168.1.48
         path: /home/spigell/projects/hh-responder
