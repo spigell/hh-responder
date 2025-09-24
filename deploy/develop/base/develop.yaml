@@ -1,0 +1,60 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hh-responder-codex-workbench
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hh-responder-codex-workbench
+  namespace: hh-responder-codex-workbench
+  labels:
+    app: hh-responder-codex-workbench
+spec:
+  terminationGracePeriodSeconds: 4
+  automountServiceAccountToken: false
+
+  # Use isolated user namespace (NOT host users)
+  hostUsers: false
+
+  # Avoid auto-injecting service env vars
+  enableServiceLinks: false
+
+  # ---- Primary application container ----
+  containers:
+    - name: workbench
+      image: ghcr.io/spigell/codex-workbench:v0.39.0-ef09dc
+      workingDir: /project
+      command:
+        - /bin/bash
+        - -c
+        - |
+          go version || true
+          echo "================================="
+          sleep infinity
+      volumeMounts:
+        - name: project
+          mountPath: /project
+        - name: tmp
+          mountPath: /tmp
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "1"
+        limits:
+          memory: "2Gi"
+          cpu: "2"
+      securityContext:
+        # runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+
+  volumes:
+    - name: project
+      emptyDir: {}
+    - name: tmp
+      emptyDir: {}

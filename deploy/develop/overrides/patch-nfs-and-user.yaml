@@ -1,0 +1,53 @@
+# This replace is used as an example for kustomize. And also for my homelab.
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hh-responder-codex-workbench
+  namespace: hh-responder-codex-workbench
+spec:
+  # NFS do not supports user namespaces.
+  hostUsers: true
+  volumes:
+    - $patch: replace
+    - name: project
+      nfs:
+        server: 192.168.1.48
+        path: /home/spigell/projects/hh-responder
+    - name: codex
+      persistentVolumeClaim:
+        claimName: codex-home
+    - name: tmp
+      emptyDir: {}
+    - name: bootstrap
+      configMap:
+        name: workbench-bootstrap
+        defaultMode: 0755
+    - name: codex-config
+      configMap:
+        name: codex-config
+        defaultMode: 0644
+  containers:
+    - name: workbench
+      command: ["/bin/bash","-c","/opt/bootstrap/user-bootstrap.sh main"]
+      securityContext:
+        capabilities:
+            drop: ["ALL"]
+            add:
+            - CHOWN
+            - FOWNER
+            - SETGID
+            - SETFCAP
+            - SETUID
+            - DAC_OVERRIDE
+      volumeMounts:
+        - name: bootstrap
+          mountPath: /opt/bootstrap
+          readOnly: true
+        - name: codex
+          mountPath: /home/spigell/.codex
+        - name: codex-config
+          mountPath: /opt/codex-config/config.toml
+          subPath: codex-config.toml
+          readOnly: true
