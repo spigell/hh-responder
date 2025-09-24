@@ -25,6 +25,19 @@ type Config struct {
 			Employers []string
 		}
 	}
+	AI *AIConfig `mapstructure:"ai"`
+}
+
+type AIConfig struct {
+	Enabled         bool          `mapstructure:"enabled"`
+	Provider        string        `mapstructure:"provider"`
+	MinimumFitScore float64       `mapstructure:"minimum-fit-score"`
+	Gemini          *GeminiConfig `mapstructure:"gemini"`
+}
+
+type GeminiConfig struct {
+	APIKey   string `mapstructure:"api-key"`
+	Model    string `mapstructure:"model"`
 }
 
 var (

@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
+	"github.com/spigell/hh-responder/internal/ai"
+	"github.com/spigell/hh-responder/internal/ai/gemini"
 	"github.com/spigell/hh-responder/internal/headhunter"
 	"github.com/spigell/hh-responder/internal/logger"
 
@@ -87,6 +90,25 @@ func run(cmd *cobra.Command) {
 		hh.UserAgent = config.UserAgent
 	}
 
+	if config.Apply == nil || config.Apply.Resume == "" {
+		logger.Fatal("resume title is required under apply.resume to evaluate and apply to vacancies")
+	}
+
+	resumes, err := hh.GetMineResumes()
+	if err != nil {
+		logger.Fatal("getting mine resumes", zap.Error(err))
+	}
+
+	logger.Info("getting mine resumes", zap.Int("count", resumes.Len()))
+
+	selectedResume := resumes.FindByTitle(config.Apply.Resume)
+	if selectedResume == nil {
+		logger.Fatal("resume with given title not found",
+			zap.Any("existed resumes titles", resumes.Titles()),
+			zap.String("resume title", config.Apply.Resume),
+		)
+	}
+
 	logger.Info("starting the search", zap.String("search", config.Search.Text))
 
 	vacancies, err := getVacancies(hh, config, cmd, logger)
@@ -96,6 +118,16 @@ func run(cmd *cobra.Command) {
 
 	if vacancies.Len() == 0 {
 		logger.Info("exiting", zap.String("reason", "no vacancies left"))
+		return
+	}
+
+	aiAssessments, err := prepareAIEvaluation(ctx, logger, config, hh, selectedResume, vacancies)
+	if err != nil {
+		logger.Fatal("evaluating vacancies with AI", zap.Error(err))
+	}
+
+	if vacancies.Len() == 0 {
+		logger.Info("exiting", zap.String("reason", "no vacancies match resume according to AI"))
 		return
 	}
 
@@ -111,7 +143,7 @@ func run(cmd *cobra.Command) {
 
 		logger.Info("current list of vacancies", zap.Int("count", vacancies.Len()))
 
-		if err := handleAction(action, hh, logger, config, vacancies); err != nil {
+		if err := handleAction(action, hh, logger, config, vacancies, selectedResume, aiAssessments); err != nil {
 			if errors.Is(err, errExit) {
 				return
 			}
@@ -120,15 +152,15 @@ func run(cmd *cobra.Command) {
 	}
 }
 
-func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies) error {
+func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume, assessments map[string]*ai.FitAssessment) error {
 	switch action {
 	case PromptYes:
-		return apply(hh, *logger, config.Apply.Resume, vacancies, config.Apply.Message)
+		return apply(hh, *logger, resume, vacancies, config.Apply.Message, assessments)
 	case PromptNo:
 		logger.Info("exiting", zap.String("reason", "got no from prompt"))
 		return errExit
 	case PromptManualApply:
-		return manualApply(hh, logger, config, vacancies)
+		return manualApply(hh, logger, config, vacancies, resume, assessments)
 	case PromptReportByEmployers:
 		pretty, _ := json.MarshalIndent(vacancies.ReportByEmployer(), "", "  ")
 		logger.Info(string(pretty), zap.Int("vacancies count", vacancies.Len()))
@@ -145,15 +177,34 @@ func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, conf
 	}
 }
 
-func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies) error {
+func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume, assessments map[string]*ai.FitAssessment) error {
 	for {
 		items := make([]string, 0)
 		v := make([]*headhunter.Vacancy, 0)
 
 		for _, vc := range vacancies.Items {
-			items = append(items, fmt.Sprintf("%s %s / %s / %s",
-				vc.ID, vc.Name, vc.Employer.Name, vc.AlternateURL),
+			label := fmt.Sprintf("%s %s / %s / %s",
+				vc.ID, vc.Name, vc.Employer.Name, vc.AlternateURL,
 			)
+
+			if assessment := assessments[vc.ID]; assessment != nil {
+				meta := make([]string, 0, 2)
+				if assessment.Score > 0 {
+					meta = append(meta, fmt.Sprintf("AI score %.2f", assessment.Score))
+				}
+				if assessment.Reason != "" {
+					reason := assessment.Reason
+					if len(reason) > 80 {
+						reason = reason[:77] + "..."
+					}
+					meta = append(meta, reason)
+				}
+				if len(meta) > 0 {
+					label = fmt.Sprintf("%s [%s]", label, strings.Join(meta, " | "))
+				}
+			}
+
+			items = append(items, label)
 		}
 
 		excludeFile := viper.GetString("exclude-file")
@@ -198,7 +249,7 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 				return fmt.Errorf("there is no such vacancy id %s", vacancyID)
 			}
 
-			if err = apply(hh, *logger, config.Apply.Resume, &headhunter.Vacancies{Items: v}, config.Apply.Message); err != nil {
+			if err = apply(hh, *logger, resume, &headhunter.Vacancies{Items: v}, config.Apply.Message, assessments); err != nil {
 				return err
 			}
 
@@ -207,31 +258,183 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 	}
 }
 
-func apply(hh *headhunter.Client, logger zap.Logger, resumeName string, vacancies *headhunter.Vacancies, message string) error {
-	resumes, err := hh.GetMineResumes()
-	if err != nil {
-		return err
-	}
-
-	logger.Info("getting mine resumes", zap.Int("count", resumes.Len()))
-
-	resume := resumes.FindByTitle(resumeName)
-
+func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, vacancies *headhunter.Vacancies, defaultMessage string, assessments map[string]*ai.FitAssessment) error {
 	if resume == nil {
-		logger.Fatal("resume with given title not found",
-			zap.Any("existed resumes titles", resumes.Titles()),
-			zap.String("resume title", resumeName),
-		)
+		return fmt.Errorf("resume is required")
 	}
 
-	err = hh.Apply(resume, vacancies, message)
-	if err != nil {
-		return err
+	for _, vacancy := range vacancies.Items {
+		if vacancy == nil {
+			continue
+		}
+
+		message := defaultMessage
+
+		if assessment := assessments[vacancy.ID]; assessment != nil {
+			if assessment.Message != "" {
+				message = assessment.Message
+			} else if message == "" && assessment.Reason != "" {
+				message = assessment.Reason
+			}
+		}
+
+		if message == "" {
+			message = fmt.Sprintf("Hello! I would like to apply for %s.", vacancy.Name)
+			logger.Debug("falling back to default AI message", zap.String("vacancy_id", vacancy.ID))
+		}
+
+		if err := hh.ApplyWithMessage(resume, vacancy, message); err != nil {
+			return err
+		}
+
+		if assessment := assessments[vacancy.ID]; assessment != nil {
+			logger.Info("successfully applied to vacancy",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.String("vacancy_name", vacancy.Name),
+				zap.Float64("ai_score", assessment.Score),
+			)
+		} else {
+			logger.Info("successfully applied to vacancy",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.String("vacancy_name", vacancy.Name),
+			)
+		}
 	}
 
 	logger.Info("successfully applied to vacancies", zap.Int("count", vacancies.Len()))
 
 	return nil
+}
+
+func prepareAIEvaluation(ctx context.Context, logger *zap.Logger, cfg *Config, hh *headhunter.Client, resume *headhunter.Resume, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
+	matcher, err := newAIMatcher(ctx, cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	
+	if matcher == nil {
+		return nil, nil
+	}
+	if resume == nil {
+		return nil, fmt.Errorf("resume is required for AI evaluation")
+	}
+
+	resumeDetails, err := hh.GetResumeDetails(resume.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get resume details: %w", err)
+	}
+
+	return evaluateVacanciesWithMatcher(ctx, logger, matcher, resumeDetails, hh, vacancies)
+}
+
+func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matcher, error) {
+	if cfg == nil || cfg.AI == nil || !cfg.AI.Enabled {
+		return nil, nil
+	}
+
+	provider := strings.TrimSpace(strings.ToLower(cfg.AI.Provider))
+	if provider != "" && provider != "gemini" {
+		return nil, fmt.Errorf("unsupported ai provider: %s", cfg.AI.Provider)
+	}
+
+	if cfg.AI.Gemini == nil {
+		return nil, fmt.Errorf("gemini configuration is required when ai is enabled")
+	}
+
+	apiKey := strings.TrimSpace(cfg.AI.Gemini.APIKey)
+	if apiKey == "" {
+		apiKey = strings.TrimSpace(os.Getenv("GOOGLE_API_KEY"))
+	}
+	if apiKey == "" {
+		apiKey = strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+	}
+	if apiKey == "" {
+		return nil, fmt.Errorf("gemini api key is required (set ai.gemini.api-key or GOOGLE_API_KEY/GEMINI_API_KEY)")
+	}
+
+	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.AI.Gemini.Model)
+	if err != nil {
+		return nil, err
+	}
+
+	minScore := cfg.AI.MinimumFitScore
+	if minScore < 0 {
+		minScore = 0
+	}
+
+	logger.Info("AI assistance enabled",
+		zap.String("provider", "gemini"),
+		zap.String("model", generator.Model()),
+		zap.Float64("minimum_fit_score", minScore),
+	)
+
+	matcher := gemini.NewMatcher(generator, logger, minScore)
+
+	return matcher, nil
+}
+
+func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, matcher ai.Matcher, resumeDetails *headhunter.ResumeDetails, hh *headhunter.Client, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
+	if matcher == nil {
+		return nil, nil
+	}
+
+	initial := vacancies.Len()
+	approved := make([]*headhunter.Vacancy, 0, initial)
+	assessments := make(map[string]*ai.FitAssessment)
+
+	for _, vacancy := range vacancies.Items {
+		if vacancy == nil {
+			continue
+		}
+
+		detailed := vacancy
+		if full, err := hh.GetVacancy(vacancy.ID); err == nil && full != nil {
+			detailed = full
+		} else if err != nil {
+			logger.Debug("fetching detailed vacancy failed",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.Error(err),
+			)
+		}
+
+		assessment, err := matcher.Evaluate(ctx, resumeDetails, detailed)
+		if err != nil {
+			logger.Warn("AI evaluation failed",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.Error(err),
+			)
+			approved = append(approved, detailed)
+			continue
+		}
+
+		if !assessment.Fit {
+			logger.Info("vacancy rejected by AI",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.Float64("ai_score", assessment.Score),
+				zap.String("reason", assessment.Reason),
+			)
+			continue
+		}
+
+		logger.Info("vacancy approved by AI",
+			zap.String("vacancy_id", vacancy.ID),
+			zap.Float64("ai_score", assessment.Score),
+		)
+
+		approved = append(approved, detailed)
+		assessments[detailed.ID] = assessment
+	}
+
+	vacancies.Items = approved
+
+	if initial != len(approved) {
+		logger.Info("AI filtering completed",
+			zap.Int("initial_vacancies", initial),
+			zap.Int("approved_vacancies", len(approved)),
+		)
+	}
+
+	return assessments, nil
 }
 
 // getVacancies returns a list of vacancies that match the config.

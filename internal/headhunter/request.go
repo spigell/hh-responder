@@ -161,6 +161,55 @@ func (c *Client) setHeaders(req *http.Request) *http.Request {
 	return req
 }
 
+func (c *Client) getJSON(url string, q url.Values, target interface{}) error {
+	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+
+	req = c.setHeaders(req)
+	req.Header.Set("Content-Type", contentType)
+	if q != nil {
+		req.URL.RawQuery = q.Encode()
+	}
+
+	resp, err := c.request(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var reader io.Reader = resp.Body
+	var gzipReader *gzip.Reader
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzipReader, err = gzip.NewReader(resp.Body)
+		if err != nil {
+			return err
+		}
+		defer gzipReader.Close()
+		reader = gzipReader
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	if target == nil {
+		return nil
+	}
+
+	if err := json.Unmarshal(data, target); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // addPage adds page parameter to request URL.
 func addPage(req *http.Request, page int) *http.Request {
 	q := req.URL.Query()

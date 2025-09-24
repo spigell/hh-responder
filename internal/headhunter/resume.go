@@ -15,6 +15,12 @@ type Resume struct {
 	ID    string `json:"id,omitempty"`
 }
 
+type ResumeDetails struct {
+	ID    string
+	Title string
+	Raw   map[string]any
+}
+
 func (c *Client) getResumes(id string) (*Resumes, error) {
 	apiURLMineResumes := fmt.Sprintf("%s/resumes/%s", c.APIURL, id)
 
@@ -55,4 +61,42 @@ func (r *Resumes) FindByTitle(title string) *Resume {
 	}
 
 	return nil
+}
+
+func (c *Client) GetResumeDetails(id string) (*ResumeDetails, error) {
+	if id == "" {
+		return nil, fmt.Errorf("resume id is required")
+	}
+
+	apiURL := fmt.Sprintf("%s/resumes/%s", c.APIURL, id)
+
+	var raw map[string]any
+	if err := c.getJSON(apiURL, nil, &raw); err != nil {
+		return nil, err
+	}
+
+	if raw == nil {
+		raw = make(map[string]any)
+	}
+
+	return &ResumeDetails{
+		ID:    valueAsString(raw["id"]),
+		Title: valueAsString(raw["title"]),
+		Raw:   raw,
+	}, nil
+}
+
+func valueAsString(v any) string {
+	if v == nil {
+		return ""
+	}
+
+	switch typed := v.(type) {
+	case string:
+		return typed
+	case fmt.Stringer:
+		return typed.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }

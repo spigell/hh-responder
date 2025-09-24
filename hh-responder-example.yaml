@@ -35,6 +35,16 @@ apply:
       # Test employer
       - 3331116
 
+# Optional AI assistance configuration for resume-vacancy matching.
+ai:
+  enabled: false
+  provider: gemini
+  minimum-fit-score: 0.6
+  gemini:
+    # Prefer storing the key in GEMINI_API_KEY env var rather than this file.
+    api-key: "${GEMINI_API_KEY}"
+    model: gemini-2.5-pro
+
 # Optional custom user-agent header to send with requests to hh.ru API.
 # Defaults to the built-in hh-responder identifier when omitted.
 user-agent: "spigell/hh-responder (spigelly@gmail.com)"

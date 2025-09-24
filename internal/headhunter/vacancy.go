@@ -16,6 +16,21 @@ type Vacancies struct {
 	Items []*Vacancy
 }
 
+func (c *Client) GetVacancy(id string) (*Vacancy, error) {
+	if id == "" {
+		return nil, fmt.Errorf("vacancy id is required")
+	}
+
+	apiURL := fmt.Sprintf("%s%s/%s", c.APIURL, SearchPath, id)
+
+	var vacancy Vacancy
+	if err := c.getJSON(apiURL, nil, &vacancy); err != nil {
+		return nil, err
+	}
+
+	return &vacancy, nil
+}
+
 type Vacancy struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
