@@ -7,6 +7,6 @@ on:
       - '**'
 
 jobs:
-  call-workflow:
+  test-lint:
     name: Call the shared testing golang workflow
     uses: spigell/my-shared-workflows/.github/workflows/golang-test-lint.yaml@main
