@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	_ "embed"
+
 	"github.com/spigell/hh-responder/internal/ai"
 	"github.com/spigell/hh-responder/internal/headhunter"
 	"go.uber.org/zap"
@@ -23,6 +25,9 @@ type Matcher struct {
 	minScore  float64
 	logger    *zap.Logger
 }
+
+//go:embed prompt.md
+var promptTemplate string
 
 func NewMatcher(generator contentGenerator, logger *zap.Logger, minScore float64) *Matcher {
 	return &Matcher{generator: generator, minScore: minScore, logger: logger}
@@ -62,39 +67,27 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		baseURL = info.BaseURL()
 	}
 
-	if m.logger != nil {
-		m.logger.Debug("gemini generate content request",
-			zap.String("vacancy_id", vacancy.ID),
-			zap.String("resume_id", resume.ID),
-			zap.String("model", modelName),
-			zap.String("base_url", baseURL),
-			zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
-			zap.String("prompt_preview", previewText(prompt, 200)),
-		)
-	}
+	m.logger.Debug("gemini generate content request",
+		zap.String("vacancy_id", vacancy.ID),
+		zap.String("resume_id", resume.ID),
+		zap.String("model", modelName),
+		zap.String("base_url", baseURL),
+		zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
+		zap.String("prompt_preview", previewText(prompt, 200)),
+	)
 
 	raw, err := m.generator.GenerateContent(ctx, prompt)
 	if err != nil {
-		if m.logger != nil {
-			m.logger.Debug("gemini generate content failed",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.String("resume_id", resume.ID),
-				zap.String("model", modelName),
-				zap.Error(err),
-			)
-		}
 		return nil, err
 	}
 
-	if m.logger != nil {
-		m.logger.Debug("gemini generate content response",
-			zap.String("vacancy_id", vacancy.ID),
-			zap.String("resume_id", resume.ID),
-			zap.String("model", modelName),
-			zap.Int("response_length", utf8.RuneCountInString(raw)),
-			zap.String("response_preview", previewText(raw, 200)),
-		)
-	}
+	m.logger.Debug("gemini generate content response",
+		zap.String("vacancy_id", vacancy.ID),
+		zap.String("resume_id", resume.ID),
+		zap.String("model", modelName),
+		zap.Int("response_length", utf8.RuneCountInString(raw)),
+		zap.String("response_preview", previewText(raw, 200)),
+	)
 
 	assessment, err := parseResponse(raw)
 	if err != nil {
@@ -102,13 +95,11 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 	}
 
 	if m.minScore > 0 && !math.IsNaN(assessment.Score) && assessment.Score < m.minScore {
-		if m.logger != nil {
-			m.logger.Debug("vacancy rejected by score threshold",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.Float64("score", assessment.Score),
-				zap.Float64("threshold", m.minScore),
-			)
-		}
+		m.logger.Debug("set fit to false by score threshold",
+			zap.String("vacancy_id", vacancy.ID),
+			zap.Float64("score", assessment.Score),
+			zap.Float64("threshold", m.minScore),
+		)
 		assessment.Fit = false
 	}
 
@@ -117,18 +108,13 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 }
 
 func buildPrompt(resumeJSON, vacancyJSON string) string {
-	var sb strings.Builder
-	sb.WriteString("You are an assistant that assesses job fit between a candidate resume and a vacancy.\n")
-	sb.WriteString("Respond strictly in valid JSON without additional text.\n")
-	sb.WriteString("Return an object with keys: fit (boolean), score (number between 0 and 1), reason (short string), message (short cover letter tailored to the vacancy using candidate experience).\n")
-	sb.WriteString("If the candidate is not a fit set fit to false, score to 0, and provide a concise reason.\n")
-	sb.WriteString("The message must be in the same language as the vacancy description when possible and stay under 1200 characters.\n")
-	sb.WriteString("Resume:\n")
-	sb.WriteString(resumeJSON)
-	sb.WriteString("\nVacancy:\n")
-	sb.WriteString(vacancyJSON)
-	sb.WriteString("\nJSON Response:")
-	return sb.String()
+	template := promptTemplate
+	if strings.TrimSpace(template) == "" {
+		template = "Resume:\n{{RESUME_JSON}}\n\nVacancy:\n{{VACANCY_JSON}}\n\nJSON Response:"
+	}
+	prompt := strings.ReplaceAll(template, "{{RESUME_JSON}}", resumeJSON)
+	prompt = strings.ReplaceAll(prompt, "{{VACANCY_JSON}}", vacancyJSON)
+	return prompt
 }
 
 func parseResponse(raw string) (*ai.FitAssessment, error) {

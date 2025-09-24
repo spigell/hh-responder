@@ -93,7 +93,3 @@ func (g *Generator) Model() string {
 	}
 	return g.modelName
 }
-
-func DefaultModel() string {
-	return defaultModel
-}

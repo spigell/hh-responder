@@ -29,6 +29,7 @@ const (
 	PromptManualApply         = "Apply vacancies in manual mode"
 	PromptAppendToExcludeFile = "Append all vacancies to exclude file"
 	PromptVacanciesToFile     = "Dump vacancies to file"
+	defaultFallbackMessage    = "Hello! I would like to apply for this vacancy."
 )
 
 var errExit = errors.New("exit requested")
@@ -279,7 +280,7 @@ func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, 
 		}
 
 		if message == "" {
-			message = fmt.Sprintf("Hello! I would like to apply for %s.", vacancy.Name)
+			message = defaultFallbackMessage
 			logger.Debug("falling back to default AI message", zap.String("vacancy_id", vacancy.ID))
 		}
 
@@ -383,9 +384,6 @@ func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, match
 	assessments := make(map[string]*ai.FitAssessment)
 
 	for _, vacancy := range vacancies.Items {
-		if vacancy == nil {
-			continue
-		}
 
 		detailed := vacancy
 		if full, err := hh.GetVacancy(vacancy.ID); err == nil && full != nil {
@@ -408,7 +406,7 @@ func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, match
 		}
 
 		if !assessment.Fit {
-			logger.Info("vacancy rejected by AI",
+			logger.Info("vacancy rejected by AI provider",
 				zap.String("vacancy_id", vacancy.ID),
 				zap.Float64("ai_score", assessment.Score),
 				zap.String("reason", assessment.Reason),

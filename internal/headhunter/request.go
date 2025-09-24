@@ -28,7 +28,7 @@ type ItemResponse struct {
 	PerPage int `json:"per_page"`
 }
 
-type Item interface{}
+type Item any
 
 // GetItems makes GET request to HeadHunter API and return items from all pages.
 func (c *Client) GetItems(url string, q url.Values) ([]Item, error) {
@@ -161,7 +161,7 @@ func (c *Client) setHeaders(req *http.Request) *http.Request {
 	return req
 }
 
-func (c *Client) getJSON(url string, q url.Values, target interface{}) error {
+func (c *Client) getJSON(url string, q url.Values, target any) error {
 	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
