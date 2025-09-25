@@ -17,7 +17,7 @@ type Config struct {
 	Search      *headhunter.SearchParams `mapstructure:"search"`
 	ExcludeFile string                   `mapstructure:"exclude-file"`
 	UserAgent   string                   `mapstructure:"user-agent"`
-	Token       string                   `mapstructure:"token"`
+	TokenFile   string                   `mapstructure:"token-file"`
 	Apply       *struct {
 		Resume  string
 		Message string
@@ -56,6 +56,10 @@ func Execute() error {
 }
 
 func init() {
+	if err := viper.BindEnv("token-file", "HH_TOKEN_FILE"); err != nil {
+		log.Fatalf("binding HH_TOKEN_FILE environment variable: %v", err)
+	}
+
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "a config file (default is hh-responder.yaml in current directory)")

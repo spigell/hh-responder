@@ -1,6 +1,7 @@
 # Documentation for search api - https://github.com/hhru/api/blob/master/docs_eng/vacancies.md
-# Personal access token used for authenticated requests to hh.ru API.
-token: "put-your-token-here"
+# Path to a file that contains the personal access token used for authenticated requests to hh.ru API.
+# Provide it via the HH_TOKEN_FILE environment variable or uncomment the line below.
+# token-file: /path/to/token
 
 search:
   clusters: false

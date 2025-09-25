@@ -81,11 +81,16 @@ func run(cmd *cobra.Command) {
 		logger.Fatal("config is required")
 	}
 
-	if config.Token == "" {
-		logger.Fatal("headhunter token is missing", zap.String("hint", "set token in configuration file under 'token' key"))
+	token, err := resolveToken(config)
+	if err != nil {
+		logger.Fatal(
+			"loading headhunter token",
+			zap.Error(err),
+			zap.String("hint", "set HH_TOKEN_FILE environment variable or the 'token-file' key in the configuration file"),
+		)
 	}
 
-	hh := headhunter.New(ctx, logger, config.Token)
+	hh := headhunter.New(ctx, logger, token)
 
 	if config != nil && config.UserAgent != "" {
 		hh.UserAgent = config.UserAgent
@@ -176,6 +181,33 @@ func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, conf
 	default:
 		return fmt.Errorf("invalid action: %s", action)
 	}
+}
+
+func resolveToken(config *Config) (string, error) {
+	if config == nil {
+		return "", errors.New("config is required")
+	}
+
+	tokenFile := strings.TrimSpace(config.TokenFile)
+	if tokenFile == "" {
+		tokenFile = strings.TrimSpace(viper.GetString("token-file"))
+	}
+
+	if tokenFile == "" {
+		return "", errors.New("headhunter token file is not configured")
+	}
+
+	tokenBytes, err := os.ReadFile(tokenFile)
+	if err != nil {
+		return "", fmt.Errorf("reading token file %q: %w", tokenFile, err)
+	}
+
+	token := strings.TrimSpace(string(tokenBytes))
+	if token == "" {
+		return "", fmt.Errorf("token file %q is empty", tokenFile)
+	}
+
+	return token, nil
 }
 
 func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume, assessments map[string]*ai.FitAssessment) error {
