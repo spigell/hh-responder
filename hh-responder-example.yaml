@@ -45,6 +45,8 @@ ai:
     # Prefer storing the key in GEMINI_API_KEY env var rather than this file.
     api-key: "${GEMINI_API_KEY}"
     model: gemini-2.5-pro
+    # Number of attempts per request on transient or short quota errors (>=1).
+    max-retries: 3
 
 # Optional custom user-agent header to send with requests to hh.ru API.
 # Defaults to the built-in hh-responder identifier when omitted.

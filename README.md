@@ -25,7 +25,7 @@ Then one can run the CLI. For example on Linux:
 
 ## AI Assistance
 
-Set the `ai.enabled` flag in the configuration file to let hh-responder evaluate vacancies against the selected resume and generate tailored cover letters with Google's Gemini API. Supply the credentials either via the `ai.gemini.api-key` field or the `GEMINI_API_KEY` environment variable. You can tune the filtering aggressiveness with `ai.minimum-fit-score` (0 disables the score threshold). See `hh-responder-example.yaml` for a complete example.
+Set the `ai.enabled` flag in the configuration file to let hh-responder evaluate vacancies against the selected resume and generate tailored cover letters with Google's Gemini API. Supply the credentials either via the `ai.gemini.api-key` field or the `GEMINI_API_KEY` environment variable. You can tune the filtering aggressiveness with `ai.minimum-fit-score` (0 disables the score threshold) and control retry attempts on transient or short quota errors via `ai.gemini.max-retries`. See `hh-responder-example.yaml` for a complete example.
 
 ## To do list:
 - Add GH actions

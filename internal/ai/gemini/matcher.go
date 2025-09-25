@@ -59,22 +59,14 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 
 	prompt := buildPrompt(string(resumeJSON), string(vacancyJSON))
 
-	var modelName, baseURL string
-	if info, ok := m.generator.(interface{ Model() string }); ok {
-		modelName = info.Model()
-	}
-	if info, ok := m.generator.(interface{ BaseURL() string }); ok {
-		baseURL = info.BaseURL()
-	}
-
-	m.logger.Debug("gemini generate content request",
+	requestFields := []zap.Field{
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
-		zap.String("model", modelName),
-		zap.String("base_url", baseURL),
 		zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
 		zap.String("prompt_preview", previewText(prompt, 200)),
-	)
+	}
+
+	m.logger.Debug("gemini generate content request", requestFields...)
 
 	raw, err := m.generator.GenerateContent(ctx, prompt)
 	if err != nil {
@@ -84,7 +76,6 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 	m.logger.Debug("gemini generate content response",
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
-		zap.String("model", modelName),
 		zap.Int("response_length", utf8.RuneCountInString(raw)),
 		zap.String("response_preview", previewText(raw, 200)),
 	)

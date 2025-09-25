@@ -3,7 +3,9 @@ package headhunter
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -90,7 +92,17 @@ type Vacancy struct {
 		ID   string `json:"id,omitempty"`
 		Name string `json:"name,omitempty"`
 	} `json:"professional_roles,omitempty"`
-	PublishedAt string `json:"published_at,omitempty"`
+	PublishedAt string        `json:"published_at,omitempty"`
+	AI          *AIAssessment `json:"ai,omitempty"`
+}
+
+type AIAssessment struct {
+	Fit     bool    `json:"fit"`
+	Score   float64 `json:"score"`
+	Reason  string  `json:"reason,omitempty"`
+	Message string  `json:"message,omitempty"`
+	Raw     string  `json:"raw,omitempty"`
+	Error   string  `json:"error,omitempty"`
 }
 
 type ExcludedVacancies struct {
@@ -200,14 +212,31 @@ func (v *Vacancies) ReportByEmployer() map[string][]map[string]string {
 	report := make(map[string][]map[string]string)
 	for _, vacancy := range v.Items {
 		key := fmt.Sprintf("%s (%s)", vacancy.Employer.Name, vacancy.Employer.ID)
-		report[key] = append(report[key], map[string]string{
+		entry := map[string]string{
 			"name":                 vacancy.Name,
 			"url":                  vacancy.AlternateURL,
 			"area":                 vacancy.Area.Name,
 			"salary":               fmt.Sprintf("%d-%d %s", vacancy.Salary.From, vacancy.Salary.To, vacancy.Salary.Currency),
 			"brief requirement":    vacancy.Snipet.Requirement,
 			"brief responsibility": vacancy.Snipet.Responsibility,
-		})
+		}
+		if vacancy.AI != nil {
+			if vacancy.AI.Error != "" {
+				entry["ai_error"] = vacancy.AI.Error
+			} else {
+				entry["ai_fit"] = strconv.FormatBool(vacancy.AI.Fit)
+				if !math.IsNaN(vacancy.AI.Score) {
+					entry["ai_score"] = strconv.FormatFloat(vacancy.AI.Score, 'f', 2, 64)
+				}
+				if vacancy.AI.Reason != "" {
+					entry["ai_reason"] = vacancy.AI.Reason
+				}
+				if vacancy.AI.Message != "" {
+					entry["ai_message"] = vacancy.AI.Message
+				}
+			}
+		}
+		report[key] = append(report[key], entry)
 	}
 	return report
 }

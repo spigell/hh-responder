@@ -344,7 +344,7 @@ func prepareAIEvaluation(ctx context.Context, logger *zap.Logger, cfg *Config, h
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if matcher == nil {
 		return nil, nil
 	}
@@ -385,7 +385,7 @@ func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matc
 		return nil, fmt.Errorf("gemini api key is required (set ai.gemini.api-key or GOOGLE_API_KEY/GEMINI_API_KEY)")
 	}
 
-	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.AI.Gemini.Model)
+	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.AI.Gemini.Model, cfg.AI.Gemini.MaxRetries, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -397,8 +397,8 @@ func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matc
 
 	logger.Info("AI assistance enabled",
 		zap.String("provider", "gemini"),
-		zap.String("model", generator.Model()),
 		zap.Float64("minimum_fit_score", minScore),
+		zap.Int("ai_retry_attempts", generator.MaxRetries()),
 	)
 
 	matcher := gemini.NewMatcher(generator, logger, minScore)
@@ -433,6 +433,7 @@ func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, match
 				zap.String("vacancy_id", vacancy.ID),
 				zap.Error(err),
 			)
+			detailed.AI = &headhunter.AIAssessment{Error: err.Error()}
 			approved = append(approved, detailed)
 			continue
 		}
@@ -451,6 +452,13 @@ func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, match
 			zap.Float64("ai_score", assessment.Score),
 		)
 
+		detailed.AI = &headhunter.AIAssessment{
+			Fit:     assessment.Fit,
+			Score:   assessment.Score,
+			Reason:  assessment.Reason,
+			Message: assessment.Message,
+			Raw:     assessment.Raw,
+		}
 		approved = append(approved, detailed)
 		assessments[detailed.ID] = assessment
 	}
