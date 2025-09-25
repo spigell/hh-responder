@@ -1,0 +1,2 @@
+# Replace the placeholder below with the actual HeadHunter token when applying the overrides.
+REPLACE_WITH_HH_TOKEN
