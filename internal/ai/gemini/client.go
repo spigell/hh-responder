@@ -114,9 +114,31 @@ func (g *Generator) generateWithModel(ctx context.Context, model, systemInstruct
 	}
 
 	delay := retryInitialDelay
+	var chat chatSession
 
 	for attempt := 1; attempt <= attempts; attempt++ {
-		resp, err := g.sendChatMessage(ctx, model, systemInstruction, message)
+		if chat == nil {
+			createdChat, err := g.createChatSession(ctx, model, systemInstruction)
+			if err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return "", ctxErr
+				}
+
+				decision := classifyRetry(err)
+				if !decision.retry || attempt == attempts {
+					return "", fmt.Errorf("generate content: %w", err)
+				}
+
+				if err := g.handleRetry(ctx, model, attempt, attempts, err, decision, &delay); err != nil {
+					return "", err
+				}
+
+				continue
+			}
+			chat = createdChat
+		}
+
+		resp, err := chat.SendMessage(ctx, genai.Part{Text: message})
 		if err == nil {
 			output := extractText(resp)
 			if output == "" {
@@ -134,41 +156,15 @@ func (g *Generator) generateWithModel(ctx context.Context, model, systemInstruct
 			return "", fmt.Errorf("generate content: %w", err)
 		}
 
-		wait := delay
-		if decision.delay > 0 {
-			wait = decision.delay
-		}
-
-		g.logger.Debug("gemini request retry in details",
-			zap.String("model", model),
-			zap.Int("attempt", attempt),
-			zap.Int("max_attempts", attempts),
-			zap.String("delay", wait.String()),
-			zap.Bool("quota_retry", decision.quota),
-			zap.Error(err),
-		)
-
-		g.logger.Info("gemini request retry occured",
-			zap.String("model", model),
-			zap.Int("attempt", attempt),
-			zap.Int("max_attempts", attempts),
-			zap.String("delay", wait.String()),
-			zap.Bool("quota_retry", decision.quota),
-		)
-
-		if err := waitFor(ctx, wait); err != nil {
+		if err := g.handleRetry(ctx, model, attempt, attempts, err, decision, &delay); err != nil {
 			return "", err
-		}
-
-		if decision.delay == 0 {
-			delay = minDuration(delay*2, retryMaxDelay)
 		}
 	}
 
 	return "", errors.New("gemini generate content failed")
 }
 
-func (g *Generator) sendChatMessage(ctx context.Context, model, systemInstruction, message string) (*genai.GenerateContentResponse, error) {
+func (g *Generator) createChatSession(ctx context.Context, model, systemInstruction string) (chatSession, error) {
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: systemInstruction}},
@@ -180,7 +176,41 @@ func (g *Generator) sendChatMessage(ctx context.Context, model, systemInstructio
 		return nil, fmt.Errorf("create chat: %w", err)
 	}
 
-	return chat.SendMessage(ctx, genai.Part{Text: message})
+	return chat, nil
+}
+
+func (g *Generator) handleRetry(ctx context.Context, model string, attempt, attempts int, retryErr error, decision retryDecision, delay *time.Duration) error {
+	wait := *delay
+	if decision.delay > 0 {
+		wait = decision.delay
+	}
+
+	g.logger.Debug("gemini request retry in details",
+		zap.String("model", model),
+		zap.Int("attempt", attempt),
+		zap.Int("max_attempts", attempts),
+		zap.String("delay", wait.String()),
+		zap.Bool("quota_retry", decision.quota),
+		zap.Error(retryErr),
+	)
+
+	g.logger.Info("gemini request retry occured",
+		zap.String("model", model),
+		zap.Int("attempt", attempt),
+		zap.Int("max_attempts", attempts),
+		zap.String("delay", wait.String()),
+		zap.Bool("quota_retry", decision.quota),
+	)
+
+	if err := waitFor(ctx, wait); err != nil {
+		return err
+	}
+
+	if decision.delay == 0 {
+		*delay = minDuration((*delay)*2, retryMaxDelay)
+	}
+
+	return nil
 }
 
 type realChatCreator struct {

@@ -30,9 +30,9 @@ type fakeChatResponse struct {
 }
 
 type fakeChat struct {
-	mu       sync.Mutex
-	response fakeChatResponse
-	messages []string
+	mu        sync.Mutex
+	responses []fakeChatResponse
+	messages  []string
 }
 
 func (f *fakeChat) SendMessage(ctx context.Context, parts ...genai.Part) (*genai.GenerateContentResponse, error) {
@@ -41,7 +41,12 @@ func (f *fakeChat) SendMessage(ctx context.Context, parts ...genai.Part) (*genai
 	for _, part := range parts {
 		f.messages = append(f.messages, part.Text)
 	}
-	return f.response.resp, f.response.err
+	if len(f.responses) == 0 {
+		return nil, errors.New("unexpected send call")
+	}
+	response := f.responses[0]
+	f.responses = f.responses[1:]
+	return response.resp, response.err
 }
 
 func newFakeChatCreator() *fakeChatCreator {
@@ -61,9 +66,8 @@ func (f *fakeChatCreator) Create(ctx context.Context, model string, config *gena
 	if len(responses) == 0 {
 		return nil, errors.New("unexpected call")
 	}
-	res := responses[0]
-	f.queue[model] = responses[1:]
-	chat := &fakeChat{response: res}
+	chat := &fakeChat{responses: append([]fakeChatResponse(nil), responses...)}
+	delete(f.queue, model)
 	f.calls = append(f.calls, chatCallRecord{model: model, config: config, chat: chat})
 	return chat, nil
 }
@@ -98,19 +102,23 @@ func TestGeneratorRetriesOnTemporaryError(t *testing.T) {
 		t.Fatalf("unexpected output: %q", output)
 	}
 
-	if len(chats.calls) != 2 {
-		t.Fatalf("expected 2 calls, got %d", len(chats.calls))
+	if len(chats.calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(chats.calls))
 	}
 
-	for _, call := range chats.calls {
-		if call.config == nil || call.config.SystemInstruction == nil {
-			t.Fatalf("expected system instruction to be set")
-		}
-		if got := call.config.SystemInstruction.Parts[0].Text; got != "system" {
-			t.Fatalf("unexpected system instruction: %q", got)
-		}
-		if len(call.chat.messages) != 1 || call.chat.messages[0] != "message" {
-			t.Fatalf("unexpected chat message: %+v", call.chat.messages)
+	call := chats.calls[0]
+	if call.config == nil || call.config.SystemInstruction == nil {
+		t.Fatalf("expected system instruction to be set")
+	}
+	if got := call.config.SystemInstruction.Parts[0].Text; got != "system" {
+		t.Fatalf("unexpected system instruction: %q", got)
+	}
+	if len(call.chat.messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(call.chat.messages))
+	}
+	for i, msg := range call.chat.messages {
+		if msg != "message" {
+			t.Fatalf("unexpected message %d: %q", i, msg)
 		}
 	}
 }
@@ -137,8 +145,11 @@ func TestGeneratorStopsAfterRetriesExhausted(t *testing.T) {
 		t.Fatal("expected error after retries exhausted")
 	}
 
-	if len(chats.calls) != 2 {
-		t.Fatalf("expected 2 calls, got %d", len(chats.calls))
+	if len(chats.calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(chats.calls))
+	}
+	if got := len(chats.calls[0].chat.messages); got != 2 {
+		t.Fatalf("expected 2 messages, got %d", got)
 	}
 }
 
@@ -165,5 +176,8 @@ func TestGeneratorDoesNotRetryOnLongQuotaDelay(t *testing.T) {
 
 	if len(chats.calls) != 1 {
 		t.Fatalf("expected single call, got %d", len(chats.calls))
+	}
+	if got := len(chats.calls[0].chat.messages); got != 1 {
+		t.Fatalf("expected single message attempt, got %d", got)
 	}
 }
