@@ -50,6 +50,8 @@ func (f *fakeModels) GenerateContent(ctx context.Context, model string, contents
 	return res.resp, res.err
 }
 
+var sleep = time.Sleep
+
 func TestGeneratorRetriesOnTemporaryError(t *testing.T) {
 	originalSleep := sleep
 	sleep = func(time.Duration) {}

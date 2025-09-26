@@ -313,7 +313,7 @@ func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, 
 
 		if message == "" {
 			message = defaultFallbackMessage
-			logger.Debug("falling back to default AI message", zap.String("vacancy_id", vacancy.ID))
+			logger.Warn("falling back to default message", zap.String("vacancy_id", vacancy.ID))
 		}
 
 		if err := hh.ApplyWithMessage(resume, vacancy, message); err != nil {

@@ -11,10 +11,10 @@ Do not reveal your rubric, scores, or internal reasoning in the message.
 
 [Template Layer — editable defaults]
 Task and rubric:
+- Logistics and TZ (0.50)
 - Skills/Tech overlap (0.30)
 - Domain/Industry relevance (0.10)
 - Seniority/scope (0.10)
-- Logistics (0.50)
 
 Language:
 - Use the vacancy’s predominant language; otherwise English.

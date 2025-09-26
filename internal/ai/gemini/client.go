@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spigell/hh-responder/internal/utils"
 	"go.uber.org/zap"
 	"google.golang.org/genai"
 )
@@ -18,12 +19,10 @@ import (
 const (
 	defaultModel      = "gemini-2.5-pro"
 	defaultMaxRetries = 3
-	retryInitialDelay = 100 * time.Millisecond
+	retryInitialDelay = 2 * time.Second
 	retryMaxDelay     = 3 * time.Second
 	maxQuotaDelay     = 180 * time.Second
 )
-
-var sleep = time.Sleep
 
 type modelGenerator interface {
 	GenerateContent(ctx context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error)
@@ -99,67 +98,75 @@ func (g *Generator) MaxRetries() int {
 }
 
 func (g *Generator) generateWithModel(ctx context.Context, model, prompt string) (string, error) {
-	attempts := g.maxRetries
-	if attempts <= 0 {
-		attempts = defaultMaxRetries
+	MaxAttempts := g.maxRetries
+	if MaxAttempts <= 0 {
+		MaxAttempts = defaultMaxRetries
 	}
 
 	delay := retryInitialDelay
 
 	contents := genai.Text(prompt)
+	var response *genai.GenerateContentResponse
 
-	for attempt := 1; attempt <= attempts; attempt++ {
-		resp, err := g.models.GenerateContent(ctx, model, contents, nil)
-		if err == nil {
-			output := extractText(resp)
-			if output == "" {
-				return "", errors.New("gemini api returned empty response")
-			}
-			g.logUsageMetadata(model, resp)
-			return output, nil
-		}
-
+	for attempt := 1; attempt <= MaxAttempts; attempt++ {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", ctxErr
 		}
 
-		decision := classifyRetry(err)
-		if !decision.retry || attempt == attempts {
-			return "", fmt.Errorf("generate content: %w", err)
+		resp, err := g.models.GenerateContent(ctx, model, contents, nil)
+		if err != nil {
+			decision := classifyRetry(err)
+			if !decision.retry || attempt == MaxAttempts {
+				return "", fmt.Errorf("generate content: %w", err)
+			}
+
+			wait := delay
+			if decision.delay > 0 {
+				wait = decision.delay
+			}
+
+			g.logger.Debug("gemini request retry in details",
+				zap.String("model", model),
+				zap.Int("attempt", attempt),
+				zap.Int("max_attempts", MaxAttempts),
+				zap.String("delay", wait.String()),
+				zap.Bool("quota_retry", decision.quota),
+				zap.Error(err),
+			)
+
+			g.logger.Info("gemini request retry occured",
+				zap.String("model", model),
+				zap.Int("attempt", attempt),
+				zap.Int("max_attempts", MaxAttempts),
+				zap.String("delay", wait.String()),
+				zap.Bool("quota_retry", decision.quota),
+			)
+
+			if err := utils.WaitFor(ctx, wait); err != nil {
+				return "", err
+			}
+
+			if decision.delay == 0 {
+				delay = minDuration(delay*2, retryMaxDelay)
+			}
+
+			continue
 		}
-
-		wait := delay
-		if decision.delay > 0 {
-			wait = decision.delay
-		}
-
-		g.logger.Debug("gemini request retry in details",
-			zap.String("model", model),
-			zap.Int("attempt", attempt),
-			zap.Int("max_attempts", attempts),
-			zap.String("delay", wait.String()),
-			zap.Bool("quota_retry", decision.quota),
-			zap.Error(err),
-		)
-
-		g.logger.Info("gemini request retry occured",
-			zap.String("model", model),
-			zap.Int("attempt", attempt),
-			zap.Int("max_attempts", attempts),
-			zap.String("delay", wait.String()),
-			zap.Bool("quota_retry", decision.quota),
-		)
-
-		if err := waitFor(ctx, wait); err != nil {
-			return "", err
-		}
-
-		if decision.delay == 0 {
-			delay = minDuration(delay*2, retryMaxDelay)
-		}
+		response = resp
+		break
 	}
 
-	return "", errors.New("gemini generate content failed")
+	if response == nil {
+		return "", errors.New("gemini generate content failed. Retries failed.")
+	}
+
+	output := extractText(response)
+	if output == "" {
+		return "", errors.New("gemini api returned empty response")
+	}
+
+	g.logUsageMetadata(model, response)
+	return output, nil
 }
 
 func extractText(resp *genai.GenerateContentResponse) string {
@@ -187,25 +194,6 @@ func extractText(resp *genai.GenerateContentResponse) string {
 	}
 
 	return strings.TrimSpace(builder.String())
-}
-
-func waitFor(ctx context.Context, d time.Duration) error {
-	if d <= 0 {
-		return nil
-	}
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		sleep(d)
-	}()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-done:
-		return nil
-	}
 }
 
 type retryDecision struct {
