@@ -17,7 +17,7 @@ import (
 )
 
 type contentGenerator interface {
-	GenerateContent(ctx context.Context, prompt string) (string, error)
+	GenerateContent(ctx context.Context, systemInstruction, message string) (string, error)
 }
 
 type Matcher struct {
@@ -57,18 +57,20 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		return nil, fmt.Errorf("marshal vacancy payload: %w", err)
 	}
 
-	prompt := buildPrompt(string(resumeJSON), string(vacancyJSON))
+	systemInstruction, message := buildPrompts(string(resumeJSON), string(vacancyJSON))
 
 	requestFields := []zap.Field{
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
-		zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
-		zap.String("prompt_preview", previewText(prompt, 200)),
+		zap.Int("system_instruction_length", utf8.RuneCountInString(systemInstruction)),
+		zap.Int("message_length", utf8.RuneCountInString(message)),
+		zap.String("system_instruction_preview", previewText(systemInstruction, 200)),
+		zap.String("message_preview", previewText(message, 200)),
 	}
 
 	m.logger.Debug("gemini generate content request", requestFields...)
 
-	raw, err := m.generator.GenerateContent(ctx, prompt)
+	raw, err := m.generator.GenerateContent(ctx, systemInstruction, message)
 	if err != nil {
 		return nil, err
 	}
@@ -98,14 +100,28 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 	return assessment, nil
 }
 
-func buildPrompt(resumeJSON, vacancyJSON string) string {
+func buildPrompts(resumeJSON, vacancyJSON string) (string, string) {
 	template := promptTemplate
 	if strings.TrimSpace(template) == "" {
-		template = "Resume:\n{{RESUME_JSON}}\n\nVacancy:\n{{VACANCY_JSON}}\n\nJSON Response:"
+		system := "Resume:\n{{RESUME_JSON}}"
+		message := "Vacancy:\n{{VACANCY_JSON}}\n\nJSON Response:"
+		return strings.ReplaceAll(system, "{{RESUME_JSON}}", resumeJSON), strings.ReplaceAll(message, "{{VACANCY_JSON}}", vacancyJSON)
 	}
-	prompt := strings.ReplaceAll(template, "{{RESUME_JSON}}", resumeJSON)
-	prompt = strings.ReplaceAll(prompt, "{{VACANCY_JSON}}", vacancyJSON)
-	return prompt
+
+	marker := "\nVacancy:\n"
+	idx := strings.Index(template, marker)
+	if idx == -1 {
+		system := strings.ReplaceAll(template, "{{RESUME_JSON}}", resumeJSON)
+		message := "Vacancy:\n{{VACANCY_JSON}}\n\nJSON Response:"
+		return system, strings.ReplaceAll(message, "{{VACANCY_JSON}}", vacancyJSON)
+	}
+
+	systemTemplate := template[:idx]
+	vacancyTemplate := "Vacancy:\n" + template[idx+len(marker):]
+
+	systemInstruction := strings.ReplaceAll(systemTemplate, "{{RESUME_JSON}}", resumeJSON)
+	message := strings.ReplaceAll(vacancyTemplate, "{{VACANCY_JSON}}", vacancyJSON)
+	return systemInstruction, message
 }
 
 func parseResponse(raw string) (*ai.FitAssessment, error) {

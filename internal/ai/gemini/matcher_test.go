@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/spigell/hh-responder/internal/headhunter"
@@ -9,13 +10,15 @@ import (
 )
 
 type stubGenerator struct {
-	response   string
-	err        error
-	lastPrompt string
+	response    string
+	err         error
+	instruction string
+	message     string
 }
 
-func (s *stubGenerator) GenerateContent(ctx context.Context, prompt string) (string, error) {
-	s.lastPrompt = prompt
+func (s *stubGenerator) GenerateContent(ctx context.Context, systemInstruction, message string) (string, error) {
+	s.instruction = systemInstruction
+	s.message = message
 	if s.err != nil {
 		return "", s.err
 	}
@@ -50,8 +53,16 @@ func TestMatcherEvaluate(t *testing.T) {
 		t.Fatalf("expected reason to be populated")
 	}
 
-	if stub.lastPrompt == "" {
-		t.Fatalf("expected prompt to be sent")
+	if stub.instruction == "" || stub.message == "" {
+		t.Fatalf("expected system instruction and message to be sent")
+	}
+
+	if !strings.Contains(stub.instruction, "Resume") || !strings.Contains(stub.instruction, "skills") {
+		t.Fatalf("expected resume data in system instruction: %s", stub.instruction)
+	}
+
+	if !strings.Contains(stub.message, "Vacancy") || !strings.Contains(stub.message, "Go Developer") {
+		t.Fatalf("expected vacancy data in chat message: %s", stub.message)
 	}
 }
 
