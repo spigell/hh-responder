@@ -181,3 +181,84 @@ func TestGeneratorDoesNotRetryOnLongQuotaDelay(t *testing.T) {
 		t.Fatalf("expected single message attempt, got %d", got)
 	}
 }
+
+func TestGeneratorReusesChatAcrossCalls(t *testing.T) {
+	chats := newFakeChatCreator()
+	chats.enqueue("gemini-pro", &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{{
+			Content: &genai.Content{Parts: []*genai.Part{{Text: "first"}}},
+		}},
+	}, nil)
+	chats.enqueue("gemini-pro", &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{{
+			Content: &genai.Content{Parts: []*genai.Part{{Text: "second"}}},
+		}},
+	}, nil)
+
+	g := &Generator{
+		chats:      chats,
+		model:      "gemini-pro",
+		maxRetries: 2,
+		logger:     zap.NewNop(),
+	}
+
+	first, err := g.GenerateContent(context.Background(), "system", "vacancy-1")
+	if err != nil {
+		t.Fatalf("first call failed: %v", err)
+	}
+	if first != "first" {
+		t.Fatalf("unexpected first response: %q", first)
+	}
+
+	second, err := g.GenerateContent(context.Background(), "system", "vacancy-2")
+	if err != nil {
+		t.Fatalf("second call failed: %v", err)
+	}
+	if second != "second" {
+		t.Fatalf("unexpected second response: %q", second)
+	}
+
+	if len(chats.calls) != 1 {
+		t.Fatalf("expected a single chat creation, got %d", len(chats.calls))
+	}
+
+	messages := chats.calls[0].chat.messages
+	if len(messages) != 2 {
+		t.Fatalf("expected two messages, got %d", len(messages))
+	}
+	if messages[0] != "vacancy-1" || messages[1] != "vacancy-2" {
+		t.Fatalf("unexpected messages: %#v", messages)
+	}
+}
+
+func TestGeneratorRejectsSystemInstructionChange(t *testing.T) {
+	chats := newFakeChatCreator()
+	chats.enqueue("gemini-pro", &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{{
+			Content: &genai.Content{Parts: []*genai.Part{{Text: "ok"}}},
+		}},
+	}, nil)
+
+	g := &Generator{
+		chats:      chats,
+		model:      "gemini-pro",
+		maxRetries: 2,
+		logger:     zap.NewNop(),
+	}
+
+	if _, err := g.GenerateContent(context.Background(), "system-a", "message-1"); err != nil {
+		t.Fatalf("first call failed: %v", err)
+	}
+
+	_, err := g.GenerateContent(context.Background(), "system-b", "message-2")
+	if err == nil {
+		t.Fatal("expected error when system instruction changes")
+	}
+
+	if len(chats.calls) != 1 {
+		t.Fatalf("expected a single chat creation, got %d", len(chats.calls))
+	}
+	if len(chats.calls[0].chat.messages) != 1 {
+		t.Fatalf("expected one message sent, got %d", len(chats.calls[0].chat.messages))
+	}
+}

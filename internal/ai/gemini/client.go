@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -39,6 +40,10 @@ type Generator struct {
 	model      string
 	maxRetries int
 	logger     *zap.Logger
+
+	mu                sync.Mutex
+	chat              chatSession
+	systemInstruction string
 }
 
 // NewGenerator creates a new Generator configured for the Gemini API backend.
@@ -118,7 +123,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, systemInstruct
 
 	for attempt := 1; attempt <= attempts; attempt++ {
 		if chat == nil {
-			createdChat, err := g.createChatSession(ctx, model, systemInstruction)
+			createdChat, err := g.ensureChatSession(ctx, model, systemInstruction)
 			if err != nil {
 				if ctxErr := ctx.Err(); ctxErr != nil {
 					return "", ctxErr
@@ -176,6 +181,28 @@ func (g *Generator) createChatSession(ctx context.Context, model, systemInstruct
 		return nil, fmt.Errorf("create chat: %w", err)
 	}
 
+	return chat, nil
+}
+
+func (g *Generator) ensureChatSession(ctx context.Context, model, systemInstruction string) (chatSession, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.systemInstruction != "" && g.systemInstruction != systemInstruction {
+		return nil, fmt.Errorf("generator already initialized with a different system instruction")
+	}
+
+	if g.chat != nil {
+		return g.chat, nil
+	}
+
+	chat, err := g.createChatSession(ctx, model, systemInstruction)
+	if err != nil {
+		return nil, err
+	}
+
+	g.chat = chat
+	g.systemInstruction = systemInstruction
 	return chat, nil
 }
 
