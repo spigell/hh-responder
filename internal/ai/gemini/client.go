@@ -25,13 +25,17 @@ const (
 
 var sleep = time.Sleep
 
-type modelGenerator interface {
-	GenerateContent(ctx context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error)
+type chatCreator interface {
+	Create(ctx context.Context, model string, config *genai.GenerateContentConfig, history []*genai.Content) (chatSession, error)
+}
+
+type chatSession interface {
+	SendMessage(ctx context.Context, parts ...genai.Part) (*genai.GenerateContentResponse, error)
 }
 
 // Generator wraps the Google GenAI client to provide simple prompt-based interactions.
 type Generator struct {
-	models     modelGenerator
+	chats      chatCreator
 	model      string
 	maxRetries int
 	logger     *zap.Logger
@@ -67,25 +71,30 @@ func NewGenerator(ctx context.Context, apiKey, model string, maxRetries int, log
 	}
 
 	return &Generator{
-		models:     client.Models,
+		chats:      &realChatCreator{chats: client.Chats},
 		model:      model,
 		maxRetries: maxRetries,
 		logger:     logger,
 	}, nil
 }
 
-// GenerateContent sends the prompt to Gemini and returns the first textual response.
-func (g *Generator) GenerateContent(ctx context.Context, prompt string) (string, error) {
-	if g == nil || g.models == nil {
+// GenerateContent sends the request to Gemini chat API and returns the first textual response.
+func (g *Generator) GenerateContent(ctx context.Context, systemInstruction, message string) (string, error) {
+	if g == nil || g.chats == nil {
 		return "", errors.New("gemini generator is not initialized")
 	}
 
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return "", errors.New("prompt must not be empty")
+	systemInstruction = strings.TrimSpace(systemInstruction)
+	if systemInstruction == "" {
+		return "", errors.New("system instruction must not be empty")
 	}
 
-	return g.generateWithModel(ctx, g.model, prompt)
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "", errors.New("message must not be empty")
+	}
+
+	return g.generateWithModel(ctx, g.model, systemInstruction, message)
 }
 
 func (g *Generator) MaxRetries() int {
@@ -98,7 +107,7 @@ func (g *Generator) MaxRetries() int {
 	return g.maxRetries
 }
 
-func (g *Generator) generateWithModel(ctx context.Context, model, prompt string) (string, error) {
+func (g *Generator) generateWithModel(ctx context.Context, model, systemInstruction, message string) (string, error) {
 	attempts := g.maxRetries
 	if attempts <= 0 {
 		attempts = defaultMaxRetries
@@ -106,10 +115,8 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 
 	delay := retryInitialDelay
 
-	contents := genai.Text(prompt)
-
 	for attempt := 1; attempt <= attempts; attempt++ {
-		resp, err := g.models.GenerateContent(ctx, model, contents, nil)
+		resp, err := g.sendChatMessage(ctx, model, systemInstruction, message)
 		if err == nil {
 			output := extractText(resp)
 			if output == "" {
@@ -159,6 +166,36 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 	}
 
 	return "", errors.New("gemini generate content failed")
+}
+
+func (g *Generator) sendChatMessage(ctx context.Context, model, systemInstruction, message string) (*genai.GenerateContentResponse, error) {
+	config := &genai.GenerateContentConfig{
+		SystemInstruction: &genai.Content{
+			Parts: []*genai.Part{{Text: systemInstruction}},
+		},
+	}
+
+	chat, err := g.chats.Create(ctx, model, config, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create chat: %w", err)
+	}
+
+	return chat.SendMessage(ctx, genai.Part{Text: message})
+}
+
+type realChatCreator struct {
+	chats *genai.Chats
+}
+
+func (c *realChatCreator) Create(ctx context.Context, model string, config *genai.GenerateContentConfig, history []*genai.Content) (chatSession, error) {
+	if c == nil || c.chats == nil {
+		return nil, errors.New("gemini chats client is not initialized")
+	}
+	chat, err := c.chats.Create(ctx, model, config, history)
+	if err != nil {
+		return nil, err
+	}
+	return chat, nil
 }
 
 func extractText(resp *genai.GenerateContentResponse) string {
@@ -213,7 +250,6 @@ type retryDecision struct {
 	quota bool
 }
 
-
 func classifyRetry(err error) retryDecision {
 	switch {
 	case err == nil:
@@ -258,7 +294,6 @@ func classifyRetry(err error) retryDecision {
 
 	return retryDecision{}
 }
-
 
 var retryAfterRegex = regexp.MustCompile(`(?i)(?:-)?[^\d]*(\d+(?:\.\d+)?)\s*(seconds|secs|s|ms|milliseconds|minutes|mins|m)?`)
 
@@ -343,14 +378,13 @@ func parseDelayFromString(val string) (time.Duration, bool) {
 		return 0, false
 	}
 
-	matches := retryAfterRegex.FindStringSubmatch(val); 
-       if len(matches) <= 2 {
-               return 0, false
-       }
+	matches := retryAfterRegex.FindStringSubmatch(val)
+	if len(matches) <= 2 {
+		return 0, false
+	}
 
-       num, _ := strconv.ParseFloat(matches[1], 64)
-       unit := strings.ToLower(matches[2])
-
+	num, _ := strconv.ParseFloat(matches[1], 64)
+	unit := strings.ToLower(matches[2])
 
 	switch unit {
 	case "", "s", "sec", "secs", "second", "seconds":
