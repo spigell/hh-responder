@@ -22,6 +22,10 @@ func (s *stubGenerator) GenerateContent(ctx context.Context, prompt string) (str
 	return s.response, nil
 }
 
+func (s *stubGenerator) Model() string {
+	return "stub-model"
+}
+
 func TestMatcherEvaluate(t *testing.T) {
 	stub := &stubGenerator{response: `{"fit": true, "score": 0.9, "reason": "Matches skills", "message": "Hello"}`}
 	matcher := NewMatcher(stub, zap.NewNop(), 0.5, 0)

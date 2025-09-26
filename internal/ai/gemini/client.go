@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	logfields "github.com/spigell/hh-responder/internal/logger"
 	"github.com/spigell/hh-responder/internal/utils"
 	"go.uber.org/zap"
 	"google.golang.org/genai"
@@ -61,6 +62,11 @@ func NewGenerator(ctx context.Context, apiKey, model string, maxRetries int, log
 		maxRetries = defaultMaxRetries
 	}
 
+
+
+	logger = logfields.WithCommonFields(logger, "gemini", model)
+
+
 	return &Generator{
 		models:     client.Models,
 		model:      model,
@@ -91,6 +97,14 @@ func (g *Generator) MaxRetries() int {
 		return defaultMaxRetries
 	}
 	return g.maxRetries
+}
+
+// Model returns the configured model name for the generator.
+func (g *Generator) Model() string {
+	if g == nil {
+		return ""
+	}
+	return g.model
 }
 
 func (g *Generator) generateWithModel(ctx context.Context, model, prompt string) (string, error) {
@@ -160,6 +174,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 	if output == "" {
 		return "", errors.New("gemini api returned empty response")
 	}
+
 
 	g.logger.Info("gemini usage stats", g.usageMetadata(response)...)
 	return output, nil
