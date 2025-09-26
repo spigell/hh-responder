@@ -13,7 +13,7 @@ import (
 
 	"github.com/spigell/hh-responder/internal/ai"
 	"github.com/spigell/hh-responder/internal/headhunter"
-	"github.com/spigell/hh-responder/internal/util"
+	"github.com/spigell/hh-responder/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -76,7 +76,7 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
 		zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
-		zap.String("prompt_preview", util.TruncateForLog(prompt, m.maxLogLen)),
+		zap.String("prompt_preview", utils.TruncateForLog(prompt, m.maxLogLen)),
 	}
 
 	m.logger.Debug("gemini generate content request", requestFields...)
@@ -90,7 +90,7 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
 		zap.Int("response_length", utf8.RuneCountInString(raw)),
-		zap.String("response_preview", util.TruncateForLog(raw, m.maxLogLen)),
+		zap.String("response_preview", utils.TruncateForLog(raw, m.maxLogLen)),
 	)
 
 	assessment, err := parseResponse(raw)

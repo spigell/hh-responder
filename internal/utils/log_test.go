@@ -1,4 +1,4 @@
-package util
+package utils
 
 import "testing"
 
@@ -38,7 +38,6 @@ func TestTruncateForLog(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if got := TruncateForLog(tt.input, tt.limit); got != tt.expect {

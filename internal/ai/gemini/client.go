@@ -165,7 +165,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 		return "", errors.New("gemini api returned empty response")
 	}
 
-	g.logUsageMetadata(model, response)
+	g.logger.Info("gemini usage stats", append(zap.String("model", model), g.usageMetadata(response)...)
 	return output, nil
 }
 
@@ -361,15 +361,16 @@ func minDuration(a, b time.Duration) time.Duration {
 	return b
 }
 
-func (g *Generator) logUsageMetadata(model string, resp *genai.GenerateContentResponse) {
-	if g == nil || g.logger == nil || resp == nil || resp.UsageMetadata == nil {
-		return
+func (g *Generator) usageMetadata(resp *genai.GenerateContentResponse) []zap.Field {
+	fields := make([]zap.Field, 0, 0)
+
+	if resp.UsageMetadata == nil {
+		return fields
 	}
 
 	md := resp.UsageMetadata
 
-	fields := []zap.Field{
-		zap.String("model", model),
+	fields = []zap.Field{
 		zap.Int("prompt_token_count", int(md.PromptTokenCount)),
 		zap.Int("candidates_token_count", int(md.CandidatesTokenCount)),
 		zap.Int("total_token_count", int(md.TotalTokenCount)),
@@ -411,5 +412,5 @@ func (g *Generator) logUsageMetadata(model string, resp *genai.GenerateContentRe
 		fields = append(fields, zap.String("traffic_type", string(md.TrafficType)))
 	}
 
-	g.logger.Info("gemini usage metadata", fields...)
+	return fields
 }
