@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/spigell/hh-responder/internal/headhunter"
@@ -20,6 +21,32 @@ func (s *stubGenerator) GenerateContent(ctx context.Context, prompt string) (str
 		return "", s.err
 	}
 	return s.response, nil
+}
+
+type cachingStubGenerator struct {
+	stubGenerator
+	cacheName          string
+	cacheErr           error
+	cachePayload       string
+	generatedWithCache bool
+	usedCacheName      string
+}
+
+func (c *cachingStubGenerator) EnsureResumeCache(ctx context.Context, resumeID, displayName, resumePayload string) (string, error) {
+	c.cachePayload = resumePayload
+	if c.cacheErr != nil {
+		return "", c.cacheErr
+	}
+	if c.cacheName == "" {
+		c.cacheName = "cachedContent/resume/default"
+	}
+	return c.cacheName, nil
+}
+
+func (c *cachingStubGenerator) GenerateContentWithCache(ctx context.Context, prompt, cacheName string) (string, error) {
+	c.generatedWithCache = true
+	c.usedCacheName = cacheName
+	return c.GenerateContent(ctx, prompt)
 }
 
 func TestMatcherEvaluate(t *testing.T) {
@@ -52,6 +79,38 @@ func TestMatcherEvaluate(t *testing.T) {
 
 	if stub.lastPrompt == "" {
 		t.Fatalf("expected prompt to be sent")
+	}
+}
+
+func TestMatcherEvaluateUsesResumeCache(t *testing.T) {
+	stub := &cachingStubGenerator{
+		stubGenerator: stubGenerator{response: `{"fit": true, "score": 0.9, "reason": "Matches", "message": "Hi"}`},
+		cacheName:     "cachedContent/resumes/123",
+	}
+	matcher := NewMatcher(stub, zap.NewNop(), 0)
+
+	resume := &headhunter.ResumeDetails{ID: "r1", Title: "Engineer", Raw: map[string]any{"skills": []string{"Go"}}}
+	vacancy := &headhunter.Vacancy{ID: "v1", Name: "Go Developer"}
+
+	_, err := matcher.Evaluate(context.Background(), resume, vacancy)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !stub.generatedWithCache {
+		t.Fatalf("expected generator to use cached content")
+	}
+
+	if stub.usedCacheName != stub.cacheName {
+		t.Fatalf("expected cache name %q, got %q", stub.cacheName, stub.usedCacheName)
+	}
+
+	if !strings.Contains(stub.lastPrompt, stub.cacheName) {
+		t.Fatalf("expected prompt to reference cache name, got %q", stub.lastPrompt)
+	}
+
+	if !strings.Contains(stub.cachePayload, `"id": "r1"`) {
+		t.Fatalf("expected cached payload to contain resume id, got %q", stub.cachePayload)
 	}
 }
 

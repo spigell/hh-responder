@@ -8,8 +8,8 @@ Return an object with keys:
 If the candidate is not a fit, set fit to false, score to 0, and provide a concise reason.
 The message must match the predominant language of the vacancy when possible and stay under 1200 characters.
 
-Resume:
-{{RESUME_JSON}}
+Resume context:
+{{RESUME_CONTEXT}}
 
 Vacancy:
 {{VACANCY_JSON}}

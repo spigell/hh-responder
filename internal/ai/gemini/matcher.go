@@ -20,6 +20,14 @@ type contentGenerator interface {
 	GenerateContent(ctx context.Context, prompt string) (string, error)
 }
 
+type cachedContentGenerator interface {
+	GenerateContentWithCache(ctx context.Context, prompt, cacheName string) (string, error)
+}
+
+type resumeCacheEnsurer interface {
+	EnsureResumeCache(ctx context.Context, resumeID, displayName, resumePayload string) (string, error)
+}
+
 type Matcher struct {
 	generator contentGenerator
 	minScore  float64
@@ -57,7 +65,26 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		return nil, fmt.Errorf("marshal vacancy payload: %w", err)
 	}
 
-	prompt := buildPrompt(string(resumeJSON), string(vacancyJSON))
+	resumeSection := string(resumeJSON)
+	var cacheName string
+	var cacheCaller cachedContentGenerator
+	if cacheCreator, ok := m.generator.(resumeCacheEnsurer); ok {
+		if caller, ok := m.generator.(cachedContentGenerator); ok {
+			if cachedName, err := cacheCreator.EnsureResumeCache(ctx, resume.ID, resume.Title, resumeSection); err != nil {
+				m.logger.Warn("failed to cache resume for gemini", zap.String("resume_id", resume.ID), zap.Error(err))
+			} else if trimmed := strings.TrimSpace(cachedName); trimmed != "" {
+				cacheName = trimmed
+				cacheCaller = caller
+				resumeSection = fmt.Sprintf("Candidate resume JSON is stored in cached content resource %q. Use it to evaluate the candidate.", cacheName)
+				m.logger.Debug("cached resume for gemini",
+					zap.String("resume_id", resume.ID),
+					zap.String("cache_name", cacheName),
+				)
+			}
+		}
+	}
+
+	prompt := buildPrompt(resumeSection, string(vacancyJSON))
 
 	var modelName, baseURL string
 	if info, ok := m.generator.(interface{ Model() string }); ok {
@@ -72,11 +99,17 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		zap.String("resume_id", resume.ID),
 		zap.String("model", modelName),
 		zap.String("base_url", baseURL),
+		zap.String("cache_name", cacheName),
 		zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
 		zap.String("prompt_preview", previewText(prompt, 200)),
 	)
 
-	raw, err := m.generator.GenerateContent(ctx, prompt)
+	var raw string
+	if cacheName != "" && cacheCaller != nil {
+		raw, err = cacheCaller.GenerateContentWithCache(ctx, prompt, cacheName)
+	} else {
+		raw, err = m.generator.GenerateContent(ctx, prompt)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +118,7 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
 		zap.String("model", modelName),
+		zap.String("cache_name", cacheName),
 		zap.Int("response_length", utf8.RuneCountInString(raw)),
 		zap.String("response_preview", previewText(raw, 200)),
 	)
@@ -107,12 +141,13 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 	return assessment, nil
 }
 
-func buildPrompt(resumeJSON, vacancyJSON string) string {
+func buildPrompt(resumeSection, vacancyJSON string) string {
 	template := promptTemplate
 	if strings.TrimSpace(template) == "" {
-		template = "Resume:\n{{RESUME_JSON}}\n\nVacancy:\n{{VACANCY_JSON}}\n\nJSON Response:"
+		template = "Resume context:\n{{RESUME_CONTEXT}}\n\nVacancy:\n{{VACANCY_JSON}}\n\nJSON Response:"
 	}
-	prompt := strings.ReplaceAll(template, "{{RESUME_JSON}}", resumeJSON)
+	prompt := strings.ReplaceAll(template, "{{RESUME_CONTEXT}}", resumeSection)
+	prompt = strings.ReplaceAll(prompt, "{{RESUME_JSON}}", resumeSection)
 	prompt = strings.ReplaceAll(prompt, "{{VACANCY_JSON}}", vacancyJSON)
 	return prompt
 }
