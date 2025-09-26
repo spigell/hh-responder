@@ -81,6 +81,10 @@ func run(cmd *cobra.Command) {
 		logger.Fatal("config is required")
 	}
 
+	if config.Apply == nil || config.Apply.Resume == "" {
+		logger.Fatal("resume title is required under apply.resume to evaluate and apply to vacancies")
+	}
+
 	token, err := resolveToken(config)
 	if err != nil {
 		logger.Fatal(
@@ -90,14 +94,10 @@ func run(cmd *cobra.Command) {
 		)
 	}
 
-	hh := headhunter.New(ctx, logger, token)
+	hh := headhunter.New(ctx, token, logger)
 
-	if config != nil && config.UserAgent != "" {
+	if config.UserAgent != "" {
 		hh.UserAgent = config.UserAgent
-	}
-
-	if config.Apply == nil || config.Apply.Resume == "" {
-		logger.Fatal("resume title is required under apply.resume to evaluate and apply to vacancies")
 	}
 
 	resumes, err := hh.GetMineResumes()
@@ -292,10 +292,6 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 }
 
 func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, vacancies *headhunter.Vacancies, defaultMessage string, assessments map[string]*ai.FitAssessment) error {
-	if resume == nil {
-		return fmt.Errorf("resume is required")
-	}
-
 	for _, vacancy := range vacancies.Items {
 		if vacancy == nil {
 			continue
@@ -304,38 +300,28 @@ func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, 
 		message := defaultMessage
 
 		if assessment := assessments[vacancy.ID]; assessment != nil {
-			if assessment.Message != "" {
-				message = assessment.Message
-			} else if message == "" && assessment.Reason != "" {
-				message = assessment.Reason
-			}
+			message = assessment.Message
 		}
 
 		if message == "" {
 			message = defaultFallbackMessage
-			logger.Warn("falling back to default message", zap.String("vacancy_id", vacancy.ID))
+			logger.Warn("falling back to default built-in message",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.String("hint", "specify message in apply section"),
+			)
 		}
 
 		if err := hh.ApplyWithMessage(resume, vacancy, message); err != nil {
 			return err
 		}
 
-		if assessment := assessments[vacancy.ID]; assessment != nil {
-			logger.Info("successfully applied to vacancy",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.String("vacancy_name", vacancy.Name),
-				zap.Float64("ai_score", assessment.Score),
-			)
-		} else {
-			logger.Info("successfully applied to vacancy",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.String("vacancy_name", vacancy.Name),
-			)
-		}
+		logger.Info("successfully applied to vacancy",
+			zap.String("vacancy_id", vacancy.ID),
+			zap.String("vacancy_name", vacancy.Name),
+		)
 	}
 
 	logger.Info("successfully applied to vacancies", zap.Int("count", vacancies.Len()))
-
 	return nil
 }
 

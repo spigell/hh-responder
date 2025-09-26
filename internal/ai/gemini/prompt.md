@@ -19,9 +19,10 @@ Task and rubric:
 Language:
 - Use the vacancy’s predominant language; otherwise English.
 
+
 Candidate message (cover letter):
 - Write in first person (“I”), candidate perspective.
-- ≤ 1200 characters, tailored, professional, no emojis/lists.
+- ≤ 150 characters, tailored, professional, no emojis/lists.
 - Use concrete evidence from the resume mapped to vacancy needs.
 - Optional: briefly mention availability/time zone or location if relevant to logistics.
 
@@ -42,6 +43,12 @@ Constraints:
 - Don’t fabricate experience.
 - Keep score within 0–1.0 and consistent with rubric.
 - The message must not mention that an assessment/scoring was performed.
+
+[User Overrides — safe injection zone]
+- Additional criteria: none
+- Deal breakers (exact): The candidate do not want to work with Russian-based companies.
+- Tone: Friendly
+- Region constraints: The candidate do not want to relocate (except ASEAN countries).
 
 [Inputs — read-only]
 Resume:

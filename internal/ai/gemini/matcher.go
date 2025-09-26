@@ -69,7 +69,7 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		"details": resume.Raw,
 	}
 
-	resumeJSON, err := json.MarshalIndent(resumePayload, "", "  ")
+	resumeJSON, err := json.MarshalIndent(resumePayload, "", "")
 	if err != nil {
 		return nil, fmt.Errorf("marshal resume payload: %w", err)
 	}

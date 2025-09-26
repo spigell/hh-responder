@@ -27,7 +27,7 @@ type Client struct {
 	APIURL     string
 }
 
-func New(ctx context.Context, logger *zap.Logger, token string) *Client {
+func New(ctx context.Context, token string, logger *zap.Logger) *Client {
 	return &Client{
 		ctx:    ctx,
 		token:  token,
