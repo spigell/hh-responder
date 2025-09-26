@@ -36,9 +36,10 @@ type AIConfig struct {
 }
 
 type GeminiConfig struct {
-	APIKey     string `mapstructure:"api-key"`
-	Model      string `mapstructure:"model"`
-	MaxRetries int    `mapstructure:"max-retries"`
+	APIKey       string `mapstructure:"api-key"`
+	Model        string `mapstructure:"model"`
+	MaxRetries   int    `mapstructure:"max-retries"`
+	MaxLogLength int    `mapstructure:"max-log-length"`
 }
 
 var (

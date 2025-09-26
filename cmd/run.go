@@ -401,7 +401,7 @@ func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matc
 		zap.Int("ai_retry_attempts", generator.MaxRetries()),
 	)
 
-	matcher := gemini.NewMatcher(generator, logger, minScore)
+	matcher := gemini.NewMatcher(generator, logger, minScore, cfg.AI.Gemini.MaxLogLength)
 
 	return matcher, nil
 }

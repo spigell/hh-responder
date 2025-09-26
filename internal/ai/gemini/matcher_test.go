@@ -24,7 +24,7 @@ func (s *stubGenerator) GenerateContent(ctx context.Context, prompt string) (str
 
 func TestMatcherEvaluate(t *testing.T) {
 	stub := &stubGenerator{response: `{"fit": true, "score": 0.9, "reason": "Matches skills", "message": "Hello"}`}
-	matcher := NewMatcher(stub, zap.NewNop(), 0.5)
+	matcher := NewMatcher(stub, zap.NewNop(), 0.5, 0)
 
 	resume := &headhunter.ResumeDetails{ID: "r1", Title: "Engineer", Raw: map[string]any{"skills": []string{"Go"}}}
 	vacancy := &headhunter.Vacancy{ID: "v1", Name: "Go Developer"}
@@ -57,7 +57,7 @@ func TestMatcherEvaluate(t *testing.T) {
 
 func TestMatcherEvaluateAppliesThreshold(t *testing.T) {
 	stub := &stubGenerator{response: `{"fit": true, "score": 0.3, "reason": "Too junior", "message": "Hello"}`}
-	matcher := NewMatcher(stub, zap.NewNop(), 0.5)
+	matcher := NewMatcher(stub, zap.NewNop(), 0.5, 0)
 
 	resume := &headhunter.ResumeDetails{ID: "r1", Title: "Engineer", Raw: map[string]any{"skills": []string{"Go"}}}
 	vacancy := &headhunter.Vacancy{ID: "v1", Name: "Go Developer"}
