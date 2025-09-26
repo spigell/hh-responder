@@ -40,6 +40,5 @@ spec:
         - name: codex
           mountPath: /home/spigell/.codex
         - name: hh-token
-          mountPath: /home/spigell/.hh-token.txt
-          subPath: .hh-token.txt
+          mountPath: /secrets/hh-token
           readOnly: true

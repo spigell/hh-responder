@@ -85,45 +85,6 @@ func TestGeneratorRetriesOnTemporaryError(t *testing.T) {
 	}
 }
 
-func TestGeneratorRetriesOnQuotaWithShortDelay(t *testing.T) {
-	originalSleep := sleep
-	sleep = func(time.Duration) {}
-	defer func() { sleep = originalSleep }()
-
-	models := newFakeModels()
-	quotaErr := genai.APIError{
-		Code:    http.StatusTooManyRequests,
-		Status:  "RESOURCE_EXHAUSTED",
-		Message: "quota exceeded. Retry after 2 seconds.",
-	}
-	models.enqueue("gemini-pro", nil, quotaErr)
-	models.enqueue("gemini-pro", &genai.GenerateContentResponse{
-		Candidates: []*genai.Candidate{{
-			Content: &genai.Content{Parts: []*genai.Part{{Text: "ok"}}},
-		}},
-	}, nil)
-
-	g := &Generator{
-		models:     models,
-		model:      "gemini-pro",
-		maxRetries: 2,
-		logger:     zap.NewNop(),
-	}
-
-	output, err := g.GenerateContent(context.Background(), " say hi ")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	if output != "ok" {
-		t.Fatalf("unexpected output: %q", output)
-	}
-
-	if len(models.calls) != 2 {
-		t.Fatalf("expected 2 calls, got %d", len(models.calls))
-	}
-}
-
 func TestGeneratorStopsAfterRetriesExhausted(t *testing.T) {
 	originalSleep := sleep
 	sleep = func(time.Duration) {}

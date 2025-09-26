@@ -6,8 +6,9 @@ generatorOptions:
 
 secretGenerator:
   - name: hh-token
+    namespace: hh-responder-codex-workbench
     files:
-      - .hh-token.txt=hh-token.txt
+      - hh-token.txt
 
 resources:
   - ../base
