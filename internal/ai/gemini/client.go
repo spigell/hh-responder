@@ -115,6 +115,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 			if output == "" {
 				return "", errors.New("gemini api returned empty response")
 			}
+			g.logUsageMetadata(model, resp)
 			return output, nil
 		}
 
@@ -213,7 +214,6 @@ type retryDecision struct {
 	quota bool
 }
 
-
 func classifyRetry(err error) retryDecision {
 	switch {
 	case err == nil:
@@ -258,7 +258,6 @@ func classifyRetry(err error) retryDecision {
 
 	return retryDecision{}
 }
-
 
 var retryAfterRegex = regexp.MustCompile(`(?i)(?:-)?[^\d]*(\d+(?:\.\d+)?)\s*(seconds|secs|s|ms|milliseconds|minutes|mins|m)?`)
 
@@ -343,14 +342,13 @@ func parseDelayFromString(val string) (time.Duration, bool) {
 		return 0, false
 	}
 
-	matches := retryAfterRegex.FindStringSubmatch(val); 
-       if len(matches) <= 2 {
-               return 0, false
-       }
+	matches := retryAfterRegex.FindStringSubmatch(val)
+	if len(matches) <= 2 {
+		return 0, false
+	}
 
-       num, _ := strconv.ParseFloat(matches[1], 64)
-       unit := strings.ToLower(matches[2])
-
+	num, _ := strconv.ParseFloat(matches[1], 64)
+	unit := strings.ToLower(matches[2])
 
 	switch unit {
 	case "", "s", "sec", "secs", "second", "seconds":
@@ -373,4 +371,57 @@ func minDuration(a, b time.Duration) time.Duration {
 		return a
 	}
 	return b
+}
+
+func (g *Generator) logUsageMetadata(model string, resp *genai.GenerateContentResponse) {
+	if g == nil || g.logger == nil || resp == nil || resp.UsageMetadata == nil {
+		return
+	}
+
+	md := resp.UsageMetadata
+
+	fields := []zap.Field{
+		zap.String("model", model),
+		zap.Int("prompt_token_count", int(md.PromptTokenCount)),
+		zap.Int("candidates_token_count", int(md.CandidatesTokenCount)),
+		zap.Int("total_token_count", int(md.TotalTokenCount)),
+	}
+
+	if resp.ModelVersion != "" {
+		fields = append(fields, zap.String("model_version", resp.ModelVersion))
+	}
+
+	if md.CachedContentTokenCount != 0 {
+		fields = append(fields, zap.Int("cached_content_token_count", int(md.CachedContentTokenCount)))
+	}
+
+	if md.ToolUsePromptTokenCount != 0 {
+		fields = append(fields, zap.Int("tool_use_prompt_token_count", int(md.ToolUsePromptTokenCount)))
+	}
+
+	if md.ThoughtsTokenCount != 0 {
+		fields = append(fields, zap.Int("thoughts_token_count", int(md.ThoughtsTokenCount)))
+	}
+
+	if len(md.CacheTokensDetails) > 0 {
+		fields = append(fields, zap.Any("cache_tokens_details", md.CacheTokensDetails))
+	}
+
+	if len(md.PromptTokensDetails) > 0 {
+		fields = append(fields, zap.Any("prompt_tokens_details", md.PromptTokensDetails))
+	}
+
+	if len(md.CandidatesTokensDetails) > 0 {
+		fields = append(fields, zap.Any("candidates_tokens_details", md.CandidatesTokensDetails))
+	}
+
+	if len(md.ToolUsePromptTokensDetails) > 0 {
+		fields = append(fields, zap.Any("tool_use_prompt_tokens_details", md.ToolUsePromptTokensDetails))
+	}
+
+	if md.TrafficType != "" {
+		fields = append(fields, zap.String("traffic_type", string(md.TrafficType)))
+	}
+
+	g.logger.Info("gemini usage metadata", fields...)
 }
