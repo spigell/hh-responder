@@ -13,6 +13,7 @@ import (
 
 	"github.com/spigell/hh-responder/internal/ai"
 	"github.com/spigell/hh-responder/internal/headhunter"
+	"github.com/spigell/hh-responder/internal/util"
 	"go.uber.org/zap"
 )
 
@@ -24,13 +25,25 @@ type Matcher struct {
 	generator contentGenerator
 	minScore  float64
 	logger    *zap.Logger
+	maxLogLen int
 }
 
 //go:embed prompt.md
 var promptTemplate string
 
-func NewMatcher(generator contentGenerator, logger *zap.Logger, minScore float64) *Matcher {
-	return &Matcher{generator: generator, minScore: minScore, logger: logger}
+const defaultMaxLogLength = 200
+
+func NewMatcher(generator contentGenerator, logger *zap.Logger, minScore float64, maxLogLength int) *Matcher {
+	if maxLogLength <= 0 {
+		maxLogLength = defaultMaxLogLength
+	}
+
+	return &Matcher{
+		generator: generator,
+		minScore:  minScore,
+		logger:    logger,
+		maxLogLen: maxLogLength,
+	}
 }
 
 func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails, vacancy *headhunter.Vacancy) (*ai.FitAssessment, error) {
@@ -63,7 +76,7 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
 		zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
-		zap.String("prompt_preview", previewText(prompt, 200)),
+		zap.String("prompt_preview", util.TruncateForLog(prompt, m.maxLogLen)),
 	}
 
 	m.logger.Debug("gemini generate content request", requestFields...)
@@ -77,7 +90,7 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 		zap.String("vacancy_id", vacancy.ID),
 		zap.String("resume_id", resume.ID),
 		zap.Int("response_length", utf8.RuneCountInString(raw)),
-		zap.String("response_preview", previewText(raw, 200)),
+		zap.String("response_preview", util.TruncateForLog(raw, m.maxLogLen)),
 	)
 
 	assessment, err := parseResponse(raw)
@@ -201,14 +214,4 @@ func coerceString(v any) string {
 	}
 }
 
-func previewText(s string, limit int) string {
-	s = strings.TrimSpace(s)
-	if limit <= 0 {
-		return ""
-	}
-	runes := []rune(s)
-	if len(runes) <= limit {
-		return s
-	}
-	return string(runes[:limit]) + "..."
-}
+// TruncateForLog is provided by internal/util for reuse across components.

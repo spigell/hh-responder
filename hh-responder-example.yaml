@@ -47,6 +47,8 @@ ai:
     model: gemini-2.5-pro
     # Number of attempts per request on transient or short quota errors (>=1).
     max-retries: 3
+    # Maximum number of characters logged for prompt/response previews.
+    max-log-length: 200
 
 # Optional custom user-agent header to send with requests to hh.ru API.
 # Defaults to the built-in hh-responder identifier when omitted.
