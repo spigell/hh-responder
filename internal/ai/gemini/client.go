@@ -18,9 +18,9 @@ import (
 
 const (
 	defaultModel      = "gemini-2.5-pro"
-	defaultMaxRetries = 3
+	defaultMaxRetries = 5
 	retryInitialDelay = 2 * time.Second
-	retryMaxDelay     = 3 * time.Second
+	retryMaxDelay     = 30 * time.Second
 	maxQuotaDelay     = 180 * time.Second
 )
 
@@ -59,10 +59,6 @@ func NewGenerator(ctx context.Context, apiKey, model string, maxRetries int, log
 
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
-	}
-
-	if logger == nil {
-		logger = zap.NewNop()
 	}
 
 	return &Generator{
@@ -147,7 +143,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 			}
 
 			if decision.delay == 0 {
-				delay = minDuration(delay*2, retryMaxDelay)
+				delay = min(delay * 2, retryMaxDelay)
 			}
 
 			continue
@@ -165,7 +161,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 		return "", errors.New("gemini api returned empty response")
 	}
 
-	g.logger.Info("gemini usage stats", append(zap.String("model", model), g.usageMetadata(response)...)
+	g.logger.Info("gemini usage stats", g.usageMetadata(response)...)
 	return output, nil
 }
 
@@ -352,13 +348,6 @@ func parseDelayFromString(val string) (time.Duration, bool) {
 
 func secondsToDuration(v float64) time.Duration {
 	return time.Duration(v * float64(time.Second))
-}
-
-func minDuration(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func (g *Generator) usageMetadata(resp *genai.GenerateContentResponse) []zap.Field {
