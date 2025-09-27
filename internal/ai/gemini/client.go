@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	logfields "github.com/spigell/hh-responder/internal/logger"
+	// logfields "github.com/spigell/hh-responder/internal/logger"
 	"github.com/spigell/hh-responder/internal/utils"
 	"go.uber.org/zap"
 	"google.golang.org/genai"
@@ -61,10 +61,6 @@ func NewGenerator(ctx context.Context, apiKey, model string, maxRetries int, log
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
 	}
-
-
-
-	logger = logfields.WithCommonFields(logger, "gemini", model)
 
 
 	return &Generator{

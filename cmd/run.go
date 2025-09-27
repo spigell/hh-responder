@@ -127,7 +127,7 @@ func run(cmd *cobra.Command) {
 		return
 	}
 
-	aiAssessments, err := prepareAIEvaluation(ctx, logger, config, hh, selectedResume, vacancies)
+	aiAssessments, err := analyzeWithAI(ctx, logger, config, hh, selectedResume, vacancies)
 	if err != nil {
 		logger.Fatal("evaluating vacancies with AI", zap.Error(err))
 	}
@@ -325,7 +325,9 @@ func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, 
 	return nil
 }
 
-func prepareAIEvaluation(ctx context.Context, logger *zap.Logger, cfg *Config, hh *headhunter.Client, resume *headhunter.Resume, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
+func analyzeWithAI(ctx context.Context, logger *zap.Logger, cfg *Config, hh *headhunter.Client, resume *headhunter.Resume, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
+	//logger = logger.With(zap.String("model", cfg.AI.Gemini.Model))
+	
 	matcher, err := newAIMatcher(ctx, cfg, logger)
 	if err != nil {
 		return nil, err
