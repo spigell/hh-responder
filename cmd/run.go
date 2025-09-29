@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	forceFlagSetMsg           = "force flag is set"
 	PromptYes                 = "Yes"
 	PromptNo                  = "No"
 	PromptBack                = "back"
@@ -166,7 +165,7 @@ func run(cmd *cobra.Command) {
 		deps.Matcher = matcher
 	}
 
-	filtered, aiAssessments, err := filtering.Run(ctx, filterCfg, deps, steps, vacancies)
+	filtered, err := filtering.Run(ctx, filterCfg, deps, steps, vacancies)
 	if err != nil {
 		logger.Fatal("filtering failed", zap.Error(err))
 	}
@@ -189,7 +188,7 @@ func run(cmd *cobra.Command) {
 
 		logger.Info("current list of vacancies", zap.Int("count", vacancies.Len()))
 
-		if err := handleAction(action, hh, logger, config, vacancies, selectedResume, aiAssessments); err != nil {
+		if err := handleAction(action, hh, logger, config, vacancies, selectedResume); err != nil {
 			if errors.Is(err, errExit) {
 				return
 			}
@@ -198,15 +197,15 @@ func run(cmd *cobra.Command) {
 	}
 }
 
-func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume, assessments map[string]*ai.FitAssessment) error {
+func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume) error {
 	switch action {
 	case PromptYes:
-		return apply(hh, *logger, resume, vacancies, config.Apply.Message, assessments)
+		return apply(hh, *logger, resume, vacancies, config.Apply.Message)
 	case PromptNo:
 		logger.Info("exiting", zap.String("reason", "got no from prompt"))
 		return errExit
 	case PromptManualApply:
-		return manualApply(hh, logger, config, vacancies, resume, assessments)
+		return manualApply(hh, logger, config, vacancies, resume)
 	case PromptReportByEmployers:
 		pretty, _ := json.MarshalIndent(vacancies.ReportByEmployer(), "", "  ")
 		logger.Info(string(pretty), zap.Int("vacancies count", vacancies.Len()))
@@ -250,7 +249,7 @@ func resolveToken(config *Config) (string, error) {
 	return token, nil
 }
 
-func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume, assessments map[string]*ai.FitAssessment) error {
+func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume) error {
 	for {
 		items := make([]string, 0)
 		v := make([]*headhunter.Vacancy, 0)
@@ -259,23 +258,6 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 			label := fmt.Sprintf("%s %s / %s / %s",
 				vc.ID, vc.Name, vc.Employer.Name, vc.AlternateURL,
 			)
-
-			if assessment := assessments[vc.ID]; assessment != nil {
-				meta := make([]string, 0, 2)
-				if assessment.Score > 0 {
-					meta = append(meta, fmt.Sprintf("AI score %.2f", assessment.Score))
-				}
-				if assessment.Reason != "" {
-					reason := assessment.Reason
-					if len(reason) > 80 {
-						reason = reason[:77] + "..."
-					}
-					meta = append(meta, reason)
-				}
-				if len(meta) > 0 {
-					label = fmt.Sprintf("%s [%s]", label, strings.Join(meta, " | "))
-				}
-			}
 
 			items = append(items, label)
 		}
@@ -322,7 +304,7 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 				return fmt.Errorf("there is no such vacancy id %s", vacancyID)
 			}
 
-			if err = apply(hh, *logger, resume, &headhunter.Vacancies{Items: v}, config.Apply.Message, assessments); err != nil {
+			if err = apply(hh, *logger, resume, &headhunter.Vacancies{Items: v}, config.Apply.Message); err != nil {
 				return err
 			}
 
@@ -331,16 +313,12 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 	}
 }
 
-func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, vacancies *headhunter.Vacancies, defaultMessage string, assessments map[string]*ai.FitAssessment) error {
+func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, vacancies *headhunter.Vacancies, defaultMessage string) error {
 	for _, vacancy := range vacancies.Items {
-		if vacancy == nil {
-			continue
-		}
 
-		message := defaultMessage
-
-		if assessment := assessments[vacancy.ID]; assessment != nil {
-			message = assessment.Message
+		message := vacancy.AI.Message
+		if message == "" {
+			message = defaultMessage
 		}
 
 		if message == "" {
@@ -420,21 +398,4 @@ func getVacancies(hh *headhunter.Client, config *Config, logger *zap.Logger) (*h
 
 	logger.Info("getting vacancies", zap.Int("count", results.Len()))
 	return results, nil
-}
-
-func showFiltersStatus(logger *zap.Logger, steps []filtering.Filter) {
-	statuses := filtering.Describe(steps)
-	for _, status := range statuses {
-		fields := []zap.Field{
-			zap.Bool("enabled", status.Enabled),
-		}
-		if status.Reason != "" {
-			fields = append(fields, zap.String("reason", status.Reason))
-		}
-		if len(status.Details) > 0 {
-			fields = append(fields, zap.Any("details", status.Details))
-		}
-
-		logger.Info("filter status", append([]zap.Field{zap.String("name", status.Name)}, fields...)...)
-	}
 }

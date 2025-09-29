@@ -63,11 +63,6 @@ type Status struct {
 	Details map[string]string
 }
 
-// statusProvider is implemented by filters that can supply detailed status information.
-type statusProvider interface {
-	Status() Status
-}
-
 // DisableByName marks a filter with the provided name as disabled while keeping it in the list.
 func DisableByName(steps []Filter, name, reason string) {
 	for _, step := range steps {
@@ -78,66 +73,37 @@ func DisableByName(steps []Filter, name, reason string) {
 }
 
 // Run executes the supplied filters sequentially, returning the resulting vacancies list and AI assessments.
-func Run(ctx context.Context, cfg *Config, deps Deps, steps []Filter, v *headhunter.Vacancies) (*headhunter.Vacancies, map[string]*ai.FitAssessment, error) {
+func Run(ctx context.Context, cfg *Config, deps Deps, steps []Filter, vacancies *headhunter.Vacancies) (*headhunter.Vacancies, error) {
 	for _, step := range steps {
 		if !step.IsEnabled() {
 			continue
 		}
 		if err := step.Validate(cfg); err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", step.Name(), err)
+			return nil, fmt.Errorf("%s: %w", step.Name(), err)
 		}
 	}
 
-	assessments := make(map[string]*ai.FitAssessment)
 	for _, step := range steps {
 		if !step.IsEnabled() {
-			if deps.Logger != nil {
-				deps.Logger.Info("filter disabled", zap.String("name", step.Name()))
-			}
+			deps.Logger.Info("filter disabled", zap.String("name", step.Name()))
 			continue
 		}
 
-		next, info, err := step.Apply(ctx, deps, v)
+		next, info, err := step.Apply(ctx, deps, vacancies)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", step.Name(), err)
+			return nil, fmt.Errorf("%s: %w", step.Name(), err)
 		}
 
-		if deps.Logger != nil {
-			deps.Logger.Info("filter step",
-				zap.String("name", step.Name()),
-				zap.Int("initial", info.Initial),
-				zap.Int("dropped", info.Dropped),
-				zap.Int("left", info.Left),
-			)
-		}
+		deps.Logger.Info("filter step",
+			zap.String("name", step.Name()),
+			zap.Int("initial", info.Initial),
+			zap.Int("dropped", info.Dropped),
+			zap.Int("left", info.Left),
+		)
 
-		v = next
+		vacancies = next
 
-		if collector, ok := step.(interface {
-			Assessments() map[string]*ai.FitAssessment
-		}); ok {
-			for id, assessment := range collector.Assessments() {
-				assessments[id] = assessment
-			}
-		}
 	}
 
-	return v, assessments, nil
-}
-
-// Describe returns status entries for the provided filters.
-func Describe(steps []Filter) []Status {
-	statuses := make([]Status, 0, len(steps))
-	for _, step := range steps {
-		if reporter, ok := step.(statusProvider); ok {
-			statuses = append(statuses, reporter.Status())
-			continue
-		}
-
-		statuses = append(statuses, Status{
-			Name:    step.Name(),
-			Enabled: step.IsEnabled(),
-		})
-	}
-	return statuses
+	return vacancies, nil
 }

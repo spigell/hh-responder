@@ -46,9 +46,7 @@ Constraints:
 
 [User Overrides — safe injection zone]
 - Additional criteria: none
-- Deal breakers (exact): The candidate do not want to work with Russian-based companies.
 - Tone: Friendly
-- Region constraints: The candidate do not want to relocate (except ASEAN countries).
 
 [Inputs — read-only]
 Resume:

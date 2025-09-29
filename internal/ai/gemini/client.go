@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	// logfields "github.com/spigell/hh-responder/internal/logger"
 	"github.com/spigell/hh-responder/internal/utils"
 	"go.uber.org/zap"
 	"google.golang.org/genai"
@@ -61,7 +60,6 @@ func NewGenerator(ctx context.Context, apiKey, model string, maxRetries int, log
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
 	}
-
 
 	return &Generator{
 		models:     client.Models,
@@ -153,7 +151,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 			}
 
 			if decision.delay == 0 {
-				delay = min(delay * 2, retryMaxDelay)
+				delay = min(delay*2, retryMaxDelay)
 			}
 
 			continue
@@ -170,7 +168,6 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 	if output == "" {
 		return "", errors.New("gemini api returned empty response")
 	}
-
 
 	g.logger.Info("gemini usage stats", g.usageMetadata(response)...)
 	return output, nil

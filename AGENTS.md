@@ -9,6 +9,8 @@ The CLI entrypoint lives in `main.go`, delegating to Cobra commands under `cmd/`
 ## Coding Style & Naming Conventions
 Follow standard Go conventions: tabs for indentation, mixedCaps for exported identifiers, and short receiver names. Always run `gofmt` (or rely on IDE auto-format) before committing; prefer `goimports` to keep imports sorted. When adding configuration keys, keep them lower-case with hyphen-separated names to match existing flags (`auto-aprove`, `exclude-file`), and document environment variables in upper snake case (e.g., `HH_TOKEN`).
 
+Avoid sprinkling `nil` checks on loggers throughout the code; rely on the shared helpers in `internal/logger` to handle absent loggers.
+
 ## Testing Guidelines
 Add table-driven `_test.go` files alongside the code they exercise, placing fixtures inside the same package when possible. Focus on deterministic tests that mock external hh.ru responses; leverage the existing interfaces in `internal/headhunter` to swap in fakes. Target meaningful coverage of new logic and avoid relying on live external services in CI. Record any manual verification steps in the PR if automation is not yet feasible.
 

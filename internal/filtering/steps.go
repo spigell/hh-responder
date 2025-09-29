@@ -3,6 +3,7 @@ package filtering
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -280,32 +281,10 @@ func (f *aiFitFilter) Apply(ctx context.Context, deps Deps, v *headhunter.Vacanc
 	}
 
 	f.assessments = make(map[string]*ai.FitAssessment, len(assessments))
-	for id, assessment := range assessments {
-		f.assessments[id] = assessment
-	}
+	maps.Copy(f.assessments, assessments)
 
 	left := v.Len()
 	return v, Step{Initial: initial, Dropped: initial - left, Left: left}, nil
-}
-
-func (f *aiFitFilter) Assessments() map[string]*ai.FitAssessment {
-	if f.assessments == nil {
-		return map[string]*ai.FitAssessment{}
-	}
-	return f.assessments
-}
-
-func (f *aiFitFilter) Status() Status {
-	details := map[string]string{}
-	if f.config != nil {
-		details["minimum_fit_score"] = fmt.Sprintf("%.2f", f.config.MinimumFitScore)
-		if f.config.Gemini != nil {
-			details["model"] = f.config.Gemini.Model
-			details["max_retries"] = strconv.Itoa(f.config.Gemini.MaxRetries)
-			details["max_log_length"] = strconv.Itoa(f.config.Gemini.MaxLogLength)
-		}
-	}
-	return Status{Name: f.Name(), Enabled: f.IsEnabled(), Reason: f.reason, Details: details}
 }
 
 func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, matcher ai.Matcher, resumeDetails *headhunter.ResumeDetails, hh *headhunter.Client, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
@@ -330,34 +309,28 @@ func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, match
 
 		assessment, err := matcher.Evaluate(ctx, resumeDetails, detailed)
 		if err != nil {
-			if logger != nil {
-				logger.Warn("AI evaluation failed",
-					zap.String("vacancy_id", vacancy.ID),
-					zap.Error(err),
-				)
-			}
+			logger.Warn("AI evaluation failed",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.Error(err),
+			)
 			detailed.AI = &headhunter.AIAssessment{Error: err.Error()}
 			approved = append(approved, detailed)
 			continue
 		}
 
 		if !assessment.Fit {
-			if logger != nil {
-				logger.Info("vacancy rejected by AI provider",
-					zap.String("vacancy_id", vacancy.ID),
-					zap.Float64("ai_score", assessment.Score),
-					zap.String("reason", assessment.Reason),
-				)
-			}
+			logger.Info("vacancy rejected by AI provider",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.Float64("ai_score", assessment.Score),
+				zap.String("reason", assessment.Reason),
+			)
 			continue
 		}
 
-		if logger != nil {
-			logger.Info("vacancy approved by AI",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.Float64("ai_score", assessment.Score),
-			)
-		}
+		logger.Info("vacancy approved by AI",
+			zap.String("vacancy_id", vacancy.ID),
+			zap.Float64("ai_score", assessment.Score),
+		)
 
 		detailed.AI = &headhunter.AIAssessment{
 			Fit:     assessment.Fit,
@@ -372,12 +345,10 @@ func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, match
 
 	vacancies.Items = approved
 
-	if initial != len(approved) && logger != nil {
-		logger.Info("AI filtering completed",
-			zap.Int("initial_vacancies", initial),
-			zap.Int("approved_vacancies", len(approved)),
-		)
-	}
+	logger.Info("AI filtering completed",
+		zap.Int("initial_vacancies", initial),
+		zap.Int("approved_vacancies", len(approved)),
+	)
 
 	return assessments, nil
 }

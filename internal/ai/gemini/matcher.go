@@ -13,7 +13,6 @@ import (
 
 	"github.com/spigell/hh-responder/internal/ai"
 	"github.com/spigell/hh-responder/internal/headhunter"
-	logfields "github.com/spigell/hh-responder/internal/logger"
 	"github.com/spigell/hh-responder/internal/utils"
 	"go.uber.org/zap"
 )
@@ -39,13 +38,6 @@ func NewMatcher(generator contentGenerator, logger *zap.Logger, minScore float64
 	if maxLogLength <= 0 {
 		maxLogLength = defaultMaxLogLength
 	}
-
-	var model string
-	if generator != nil {
-		model = generator.Model()
-	}
-
-	logger = logfields.WithCommonFields(logger, "gemini", model)
 
 	return &Matcher{
 		generator: generator,
