@@ -42,6 +42,9 @@ func StringFields(fields ...StringField) []zap.Field {
 
 // WithFields safely attaches the provided fields to the logger.
 func WithFields(logger *zap.Logger, fields ...zap.Field) *zap.Logger {
+	if logger == nil {
+		return zap.NewNop().With(fields...)
+	}
 	return logger.With(fields...)
 }
 

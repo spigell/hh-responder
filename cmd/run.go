@@ -11,6 +11,7 @@ import (
 
 	"github.com/spigell/hh-responder/internal/ai"
 	"github.com/spigell/hh-responder/internal/ai/gemini"
+	"github.com/spigell/hh-responder/internal/filtering"
 	"github.com/spigell/hh-responder/internal/headhunter"
 	"github.com/spigell/hh-responder/internal/logger"
 
@@ -29,6 +30,7 @@ const (
 	PromptManualApply         = "Apply vacancies in manual mode"
 	PromptAppendToExcludeFile = "Append all vacancies to exclude file"
 	PromptVacanciesToFile     = "Dump vacancies to file"
+	PromptShowFiltersStatus   = "Show filters status"
 	defaultFallbackMessage    = "Hello! I would like to apply for this vacancy."
 )
 
@@ -36,7 +38,7 @@ var errExit = errors.New("exit requested")
 
 var prompt = promptui.Select{
 	Label: "Procced?",
-	Items: []string{PromptYes, PromptNo, PromptReportByEmployers, PromptManualApply, PromptVacanciesToFile},
+	Items: []string{PromptYes, PromptNo, PromptReportByEmployers, PromptManualApply, PromptVacanciesToFile, PromptShowFiltersStatus},
 }
 
 var runCmd = &cobra.Command{
@@ -117,7 +119,7 @@ func run(cmd *cobra.Command) {
 
 	logger.Info("starting the search", zap.String("search", config.Search.Text))
 
-	vacancies, err := getVacancies(hh, config, cmd, logger)
+	vacancies, err := getVacancies(hh, config, logger)
 	if err != nil {
 		logger.Fatal("getting available vacancies", zap.Error(err))
 	}
@@ -127,13 +129,52 @@ func run(cmd *cobra.Command) {
 		return
 	}
 
-	aiAssessments, err := analyzeWithAI(ctx, logger, config, hh, selectedResume, vacancies)
-	if err != nil {
-		logger.Fatal("evaluating vacancies with AI", zap.Error(err))
+	deps := filtering.Deps{HH: hh, Logger: logger, Resume: selectedResume}
+	steps := []filtering.Filter{
+		filtering.NewWithTest(),
+		filtering.NewAppliedHistory(cmd),
+		filtering.NewEmployers(),
+		filtering.NewExcludeFile(),
+		filtering.NewAIFit(),
 	}
 
+	filterCfg := &filtering.Config{}
+	if config.Apply != nil && config.Apply.Exclude != nil {
+		filterCfg.Employers = append(filterCfg.Employers, config.Apply.Exclude.Employers...)
+	}
+	if config.AI != nil {
+		filterCfg.AI = &filtering.AIConfig{
+			Enabled:         config.AI.Enabled,
+			Provider:        config.AI.Provider,
+			MinimumFitScore: config.AI.MinimumFitScore,
+		}
+		if config.AI.Gemini != nil {
+			filterCfg.AI.Gemini = &filtering.GeminiConfig{
+				Model:        config.AI.Gemini.Model,
+				MaxRetries:   config.AI.Gemini.MaxRetries,
+				MaxLogLength: config.AI.Gemini.MaxLogLength,
+			}
+		}
+	}
+
+	if config.AI == nil || !config.AI.Enabled {
+		filtering.DisableByName(steps, "ai_fit", "disabled via config")
+	} else {
+		matcher, err := newAIMatcher(ctx, config, logger)
+		if err != nil {
+			logger.Fatal("building ai matcher", zap.Error(err))
+		}
+		deps.Matcher = matcher
+	}
+
+	filtered, aiAssessments, err := filtering.Run(ctx, filterCfg, deps, steps, vacancies)
+	if err != nil {
+		logger.Fatal("filtering failed", zap.Error(err))
+	}
+	vacancies = filtered
+
 	if vacancies.Len() == 0 {
-		logger.Info("exiting", zap.String("reason", "no vacancies match resume according to AI"))
+		logger.Info("exiting", zap.String("reason", "no vacancies left after filtering"))
 		return
 	}
 
@@ -148,6 +189,11 @@ func run(cmd *cobra.Command) {
 		}
 
 		logger.Info("current list of vacancies", zap.Int("count", vacancies.Len()))
+
+		if action == PromptShowFiltersStatus {
+			showFiltersStatus(logger, steps)
+			continue
+		}
 
 		if err := handleAction(action, hh, logger, config, vacancies, selectedResume, aiAssessments); err != nil {
 			if errors.Is(err, errExit) {
@@ -325,29 +371,6 @@ func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, 
 	return nil
 }
 
-func analyzeWithAI(ctx context.Context, logger *zap.Logger, cfg *Config, hh *headhunter.Client, resume *headhunter.Resume, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
-	//logger = logger.With(zap.String("model", cfg.AI.Gemini.Model))
-	
-	matcher, err := newAIMatcher(ctx, cfg, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	if matcher == nil {
-		return nil, nil
-	}
-	if resume == nil {
-		return nil, fmt.Errorf("resume is required for AI evaluation")
-	}
-
-	resumeDetails, err := hh.GetResumeDetails(resume.ID)
-	if err != nil {
-		return nil, fmt.Errorf("get resume details: %w", err)
-	}
-
-	return evaluateVacanciesWithMatcher(ctx, logger, matcher, resumeDetails, hh, vacancies)
-}
-
 func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matcher, error) {
 	if cfg == nil || cfg.AI == nil || !cfg.AI.Enabled {
 		return nil, nil
@@ -394,126 +417,30 @@ func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matc
 	return matcher, nil
 }
 
-func evaluateVacanciesWithMatcher(ctx context.Context, logger *zap.Logger, matcher ai.Matcher, resumeDetails *headhunter.ResumeDetails, hh *headhunter.Client, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
-	if matcher == nil {
-		return nil, nil
-	}
-
-	initial := vacancies.Len()
-	approved := make([]*headhunter.Vacancy, 0, initial)
-	assessments := make(map[string]*ai.FitAssessment)
-
-	for _, vacancy := range vacancies.Items {
-
-		detailed := vacancy
-		if full, err := hh.GetVacancy(vacancy.ID); err == nil && full != nil {
-			detailed = full
-		} else if err != nil {
-			logger.Debug("fetching detailed vacancy failed",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.Error(err),
-			)
-		}
-
-		assessment, err := matcher.Evaluate(ctx, resumeDetails, detailed)
-		if err != nil {
-			logger.Warn("AI evaluation failed",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.Error(err),
-			)
-			detailed.AI = &headhunter.AIAssessment{Error: err.Error()}
-			approved = append(approved, detailed)
-			continue
-		}
-
-		if !assessment.Fit {
-			logger.Info("vacancy rejected by AI provider",
-				zap.String("vacancy_id", vacancy.ID),
-				zap.Float64("ai_score", assessment.Score),
-				zap.String("reason", assessment.Reason),
-			)
-			continue
-		}
-
-		logger.Info("vacancy approved by AI",
-			zap.String("vacancy_id", vacancy.ID),
-			zap.Float64("ai_score", assessment.Score),
-		)
-
-		detailed.AI = &headhunter.AIAssessment{
-			Fit:     assessment.Fit,
-			Score:   assessment.Score,
-			Reason:  assessment.Reason,
-			Message: assessment.Message,
-			Raw:     assessment.Raw,
-		}
-		approved = append(approved, detailed)
-		assessments[detailed.ID] = assessment
-	}
-
-	vacancies.Items = approved
-
-	if initial != len(approved) {
-		logger.Info("AI filtering completed",
-			zap.Int("initial_vacancies", initial),
-			zap.Int("approved_vacancies", len(approved)),
-		)
-	}
-
-	return assessments, nil
-}
-
 // getVacancies returns a list of vacancies that match the config.
-// TODO: need refactoring.
-func getVacancies(hh *headhunter.Client, config *Config, cmd *cobra.Command, logger *zap.Logger) (*headhunter.Vacancies, error) {
+func getVacancies(hh *headhunter.Client, config *Config, logger *zap.Logger) (*headhunter.Vacancies, error) {
 	results, err := hh.Search(config.Search)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
 
 	logger.Info("getting vacancies", zap.Int("count", results.Len()))
+	return results, nil
+}
 
-	negotiations, err := hh.GetNegotiations()
-	if err != nil {
-		return nil, fmt.Errorf("get my negotiations: %w", err)
-	}
-
-	logger.Info("excluding vacancies with test. It is impossible to apply them",
-		zap.Any("excluded vacancies", results.ExcludeWithTest()),
-		zap.Int("vacancies left", results.Len()),
-	)
-
-	if cmd.Flag("do-not-exclude-applied").Value.String() == "true" {
-		logger.Info("ignoring already applied vacancies", zap.String("reason", forceFlagSetMsg))
-	} else {
-		excluded := results.Exclude(headhunter.VacancyIDField, negotiations.VacanciesIDs())
-		logger.Info("excluding vacancies based on my negotiations",
-			zap.Any("excluded vacancies", excluded),
-			zap.Int("vacancies left", results.Len()),
-		)
-	}
-
-	if config.Apply.Exclude != nil && len(config.Apply.Exclude.Employers) > 0 {
-		excluded := results.Exclude(headhunter.VacancyEmployerIDField, config.Apply.Exclude.Employers)
-		logger.Info("excluding vacancies by employers",
-			zap.Any("excluded employers", config.Apply.Exclude.Employers),
-			zap.Any("excluded vacancies", excluded),
-			zap.Int("vacancies left", results.Len()),
-		)
-	}
-	excludeFile := viper.GetString("exclude-file")
-	if excludeFile != "" {
-		excluded, err := headhunter.GetExludedVacanciesFromFile(excludeFile)
-		if err != nil {
-			return nil, fmt.Errorf("getting exluded vacancies from file: %w", err)
+func showFiltersStatus(logger *zap.Logger, steps []filtering.Filter) {
+	statuses := filtering.Describe(steps)
+	for _, status := range statuses {
+		fields := []zap.Field{
+			zap.Bool("enabled", status.Enabled),
+		}
+		if status.Reason != "" {
+			fields = append(fields, zap.String("reason", status.Reason))
+		}
+		if len(status.Details) > 0 {
+			fields = append(fields, zap.Any("details", status.Details))
 		}
 
-		excludedVacancies := results.Exclude(headhunter.VacancyIDField, excluded.VacanciesIDs())
-		logger.Info("excluding vacancies based on exclude file",
-			zap.Any("excluded vacancies", excludedVacancies),
-			zap.Int("vacancies left", results.Len()),
-		)
+		logger.Info("filter status", append([]zap.Field{zap.String("name", status.Name)}, fields...)...)
 	}
-
-	return results, nil
 }
