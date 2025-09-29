@@ -30,7 +30,6 @@ const (
 	PromptManualApply         = "Apply vacancies in manual mode"
 	PromptAppendToExcludeFile = "Append all vacancies to exclude file"
 	PromptVacanciesToFile     = "Dump vacancies to file"
-	PromptShowFiltersStatus   = "Show filters status"
 	defaultFallbackMessage    = "Hello! I would like to apply for this vacancy."
 )
 
@@ -38,7 +37,7 @@ var errExit = errors.New("exit requested")
 
 var prompt = promptui.Select{
 	Label: "Procced?",
-	Items: []string{PromptYes, PromptNo, PromptReportByEmployers, PromptManualApply, PromptVacanciesToFile, PromptShowFiltersStatus},
+	Items: []string{PromptYes, PromptNo, PromptReportByEmployers, PromptManualApply, PromptVacanciesToFile},
 }
 
 var runCmd = &cobra.Command{
@@ -189,11 +188,6 @@ func run(cmd *cobra.Command) {
 		}
 
 		logger.Info("current list of vacancies", zap.Int("count", vacancies.Len()))
-
-		if action == PromptShowFiltersStatus {
-			showFiltersStatus(logger, steps)
-			continue
-		}
 
 		if err := handleAction(action, hh, logger, config, vacancies, selectedResume, aiAssessments); err != nil {
 			if errors.Is(err, errExit) {
