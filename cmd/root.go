@@ -37,6 +37,7 @@ type AIConfig struct {
 
 type GeminiConfig struct {
 	APIKey       string `mapstructure:"api-key"`
+	APIKeyFile   string `mapstructure:"api-key-file"`
 	Model        string `mapstructure:"model"`
 	MaxRetries   int    `mapstructure:"max-retries"`
 	MaxLogLength int    `mapstructure:"max-log-length"`
@@ -60,6 +61,14 @@ func Execute() error {
 func init() {
 	if err := viper.BindEnv("token-file", "HH_TOKEN_FILE"); err != nil {
 		log.Fatalf("binding HH_TOKEN_FILE environment variable: %v", err)
+	}
+
+	if err := viper.BindEnv("ai.gemini.api-key", "GOOGLE_API_KEY", "GEMINI_API_KEY"); err != nil {
+		log.Fatalf("binding GEMINI_API_KEY environment variable: %v", err)
+	}
+
+	if err := viper.BindEnv("ai.gemini.api-key-file", "GOOGLE_API_KEY_FILE", "GEMINI_API_KEY_FILE"); err != nil {
+		log.Fatalf("binding GEMINI_API_KEY_FILE environment variable: %v", err)
 	}
 
 	cobra.OnInitialize(initConfig)

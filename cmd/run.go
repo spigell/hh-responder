@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/spigell/hh-responder/internal/ai"
@@ -14,6 +13,7 @@ import (
 	"github.com/spigell/hh-responder/internal/filtering"
 	"github.com/spigell/hh-responder/internal/headhunter"
 	"github.com/spigell/hh-responder/internal/logger"
+	"github.com/spigell/hh-responder/internal/secrets"
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -200,17 +200,10 @@ func resolveToken(config *Config) (string, error) {
 		return "", errors.New("headhunter token file is not configured")
 	}
 
-	tokenBytes, err := os.ReadFile(tokenFile)
-	if err != nil {
-		return "", fmt.Errorf("reading token file %q: %w", tokenFile, err)
-	}
-
-	token := strings.TrimSpace(string(tokenBytes))
-	if token == "" {
-		return "", fmt.Errorf("token file %q is empty", tokenFile)
-	}
-
-	return token, nil
+	return secrets.Load(secrets.Source{
+		Name: "headhunter token",
+		File: tokenFile,
+	})
 }
 
 func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume) error {
@@ -313,9 +306,13 @@ func newAIMatcher(ctx context.Context, cfg *AIConfig, logger *zap.Logger) (ai.Ma
 		return nil, fmt.Errorf("unsupported ai provider: %s", cfg.Provider)
 	}
 
-	apiKey := strings.TrimSpace(cfg.Gemini.APIKey)
-	if apiKey == "" {
-		return nil, fmt.Errorf("gemini api key is required (set ai.gemini.api-key or GOOGLE_API_KEY/GEMINI_API_KEY)")
+	apiKey, err := secrets.Load(secrets.Source{
+		Name:  "gemini api key",
+		Value: cfg.Gemini.APIKey,
+		File:  cfg.Gemini.APIKeyFile,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w (set ai.gemini.api-key, ai.gemini.api-key-file, GEMINI_API_KEY, or GEMINI_API_KEY_FILE)", err)
 	}
 
 	genLogger := logger.With(
