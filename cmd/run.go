@@ -393,7 +393,7 @@ func prepareAppliedHistoryFilter(cmd *cobra.Command, client *headhunter.Client, 
 
 func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIConfig, resume *headhunter.Resume, logger *zap.Logger, excludeFile string) (filtering.Filter, error) {
 	disabled := filtering.NewAIFit(&filtering.AIFitFilterConfig{
-			Enabled: false,
+		Enabled: false,
 	}, nil)
 
 	if config == nil || !config.Enabled {
