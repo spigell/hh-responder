@@ -353,6 +353,11 @@ func getVacancies(hh *headhunter.Client, config *Config, logger *zap.Logger) (*h
 }
 
 func prepareFilters(ctx context.Context, cmd *cobra.Command, hh *headhunter.Client, config *Config, resume *headhunter.Resume, logger *zap.Logger) *filtering.Filtering {
+	aiFilter, err := prepareAIFilter(ctx, hh, config.AI, resume, logger, config.ExcludeFile)
+	if err != nil {
+		logger.Warn("skipping AI filter", zap.Error(err))
+	}
+
 	steps := []filtering.Filter{
 		filtering.NewWithTest(),
 		prepareAppliedHistoryFilter(cmd, hh, logger),
@@ -360,10 +365,7 @@ func prepareFilters(ctx context.Context, cmd *cobra.Command, hh *headhunter.Clie
 		filtering.NewExcludeFile(config.ExcludeFile),
 	}
 
-	aiFilter, err := prepareAIFilter(ctx, hh, config.AI, resume, logger, config.ExcludeFile)
-	if err != nil {
-		logger.Warn("skipping AI filter", zap.Error(err))
-	} else if aiFilter != nil {
+	if !aiFilter.IsEnabled() {
 		steps = append(steps, aiFilter)
 	}
 
@@ -390,7 +392,9 @@ func prepareAppliedHistoryFilter(cmd *cobra.Command, client *headhunter.Client, 
 
 func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIConfig, resume *headhunter.Resume, logger *zap.Logger, excludeFile string) (filtering.Filter, error) {
 	if config == nil || !config.Enabled {
-		return nil, nil
+		return filtering.NewAIFit(&filtering.AIFitFilterConfig{
+			Enabled: false,
+		}, nil), nil
 	}
 
 	if config.Gemini == nil {
