@@ -355,6 +355,7 @@ func prepareFilters(ctx context.Context, cmd *cobra.Command, hh *headhunter.Clie
 	aiFilter, err := prepareAIFilter(ctx, hh, config.AI, resume, logger, config.ExcludeFile)
 	if err != nil {
 		logger.Warn("skipping AI filter", zap.Error(err))
+		aiFilter.Disable("skipping by error")
 	}
 
 	steps := []filtering.Filter{
@@ -362,10 +363,11 @@ func prepareFilters(ctx context.Context, cmd *cobra.Command, hh *headhunter.Clie
 		prepareAppliedHistoryFilter(cmd, hh, logger),
 		filtering.NewExludedEmployers(config.Apply.Exclude.Employers),
 		filtering.NewExcludeFile(config.ExcludeFile),
+		aiFilter,
 	}
 
 	if !aiFilter.IsEnabled() {
-		steps = append(steps, aiFilter)
+		aiFilter.Disable("skipping by switch")
 	}
 
 	return filtering.New(steps, logger)
@@ -390,14 +392,16 @@ func prepareAppliedHistoryFilter(cmd *cobra.Command, client *headhunter.Client, 
 }
 
 func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIConfig, resume *headhunter.Resume, logger *zap.Logger, excludeFile string) (filtering.Filter, error) {
-	if config == nil || !config.Enabled {
-		return filtering.NewAIFit(&filtering.AIFitFilterConfig{
+	disabled := filtering.NewAIFit(&filtering.AIFitFilterConfig{
 			Enabled: false,
-		}, nil), nil
+	}, nil)
+
+	if config == nil || !config.Enabled {
+		return disabled, nil
 	}
 
 	if config.Gemini == nil {
-		return nil, fmt.Errorf("gemini configuration is required when ai filter is enabled")
+		return disabled, fmt.Errorf("gemini configuration is required when ai filter is enabled")
 	}
 
 	aiConfig := &filtering.AIFitFilterConfig{
@@ -413,7 +417,7 @@ func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIC
 
 	matcher, err := newAIMatcher(ctx, config, logger)
 	if err != nil {
-		return nil, fmt.Errorf("building ai matcher: %w", err)
+		return disabled, fmt.Errorf("building ai matcher: %w", err)
 	}
 
 	return filtering.NewAIFit(aiConfig, &filtering.AIFitFilterDeps{
