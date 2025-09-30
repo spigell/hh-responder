@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spigell/hh-responder/internal/ai"
 	"github.com/spigell/hh-responder/internal/headhunter"
 	"go.uber.org/zap"
 )
@@ -15,16 +14,13 @@ type Filter interface {
 	Disable(reason string)
 	IsEnabled() bool
 
-	Validate(cfg *Config) error
-	Apply(ctx context.Context, deps Deps, v *headhunter.Vacancies) (*headhunter.Vacancies, Step, error)
+	Validate() error
+	Apply(ctx context.Context, v *headhunter.Vacancies) (*headhunter.Vacancies, Step, error)
 }
 
-// Deps aggregates dependencies shared across all filtering steps.
-type Deps struct {
-	HH      *headhunter.Client
-	Logger  *zap.Logger
-	Resume  *headhunter.Resume
-	Matcher ai.Matcher
+type Filtering struct {
+	steps []Filter
+	logger *zap.Logger
 }
 
 // Step describes the result of executing a filtering step.
@@ -34,67 +30,57 @@ type Step struct {
 	Left    int
 }
 
-// Config contains configuration settings consumed by the filters.
-type Config struct {
-	Employers []string
-	AI        *AIConfig
-}
 
-// AIConfig stores AI-related configuration used by the filters.
-type AIConfig struct {
-	Enabled         bool
-	Provider        string
-	MinimumFitScore float64
-	Gemini          *GeminiConfig
-}
+func New(filters []Filter, logger *zap.Logger) *Filtering {
+	return &Filtering{
+		steps: filters,
+		logger: logger,
+	}
 
-// GeminiConfig stores Gemini provider configuration.
-type GeminiConfig struct {
-	Model        string
-	MaxRetries   int
-	MaxLogLength int
-}
-
-// Status represents runtime information about a filter.
-type Status struct {
-	Name    string
-	Enabled bool
-	Reason  string
-	Details map[string]string
 }
 
 // DisableByName marks a filter with the provided name as disabled while keeping it in the list.
-func DisableByName(steps []Filter, name, reason string) {
-	for _, step := range steps {
+func (f *Filtering) DisableByName(name, reason string) error {
+	var filter Filter
+	for _, step := range f.steps {
 		if step.Name() == name {
-			step.Disable(reason)
+			filter = step
+			break
 		}
 	}
+
+	if filter == nil {
+		return fmt.Errorf("filter %s not found", name)
+	}
+
+	filter.Disable(reason)
+
+	return nil
 }
 
 // Run executes the supplied filters sequentially, returning the resulting vacancies list and AI assessments.
-func Run(ctx context.Context, cfg *Config, deps Deps, steps []Filter, vacancies *headhunter.Vacancies) (*headhunter.Vacancies, error) {
-	for _, step := range steps {
+func (f *Filtering) RunFilters(ctx context.Context, vacancies *headhunter.Vacancies) (*headhunter.Vacancies, error) {
+	for _, step := range f.steps {
 		if !step.IsEnabled() {
 			continue
 		}
-		if err := step.Validate(cfg); err != nil {
+		if err := step.Validate(); err != nil {
 			return nil, fmt.Errorf("%s: %w", step.Name(), err)
 		}
 	}
 
-	for _, step := range steps {
+	for _, step := range f.steps {
 		if !step.IsEnabled() {
-			deps.Logger.Info("filter disabled", zap.String("name", step.Name()))
+			f.logger.Info("filter disabled", zap.String("name", step.Name()))
 			continue
 		}
 
-		next, info, err := step.Apply(ctx, deps, vacancies)
+		next, info, err := step.Apply(ctx, vacancies)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", step.Name(), err)
 		}
 
-		deps.Logger.Info("filter step",
+		f.logger.Info("filter step",
 			zap.String("name", step.Name()),
 			zap.Int("initial", info.Initial),
 			zap.Int("dropped", info.Dropped),

@@ -15,5 +15,5 @@ type FitAssessment struct {
 }
 
 type Matcher interface {
-	Evaluate(ctx context.Context, resume *headhunter.ResumeDetails, vacancy *headhunter.Vacancy) (*FitAssessment, error)
+	Evaluate(ctx context.Context, resumePayload map[string]any, vacancy *headhunter.Vacancy) (*FitAssessment, error)
 }

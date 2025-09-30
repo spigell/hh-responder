@@ -63,11 +63,7 @@ func (r *Resumes) FindByTitle(title string) *Resume {
 	return nil
 }
 
-func (c *Client) GetResumeDetails(id string) (*ResumeDetails, error) {
-	if id == "" {
-		return nil, fmt.Errorf("resume id is required")
-	}
-
+func (c *Client) GetResumeRaw(id string) (map[string]any, error) {
 	apiURL := fmt.Sprintf("%s/resumes/%s", c.APIURL, id)
 
 	var raw map[string]any
@@ -76,27 +72,8 @@ func (c *Client) GetResumeDetails(id string) (*ResumeDetails, error) {
 	}
 
 	if raw == nil {
-		raw = make(map[string]any)
+		return nil, fmt.Errorf("resume is empty")
 	}
 
-	return &ResumeDetails{
-		ID:    valueAsString(raw["id"]),
-		Title: valueAsString(raw["title"]),
-		Raw:   raw,
-	}, nil
-}
-
-func valueAsString(v any) string {
-	if v == nil {
-		return ""
-	}
-
-	switch typed := v.(type) {
-	case string:
-		return typed
-	case fmt.Stringer:
-		return typed.String()
-	default:
-		return fmt.Sprintf("%v", v)
-	}
+	return raw, nil
 }

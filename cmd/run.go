@@ -123,56 +123,20 @@ func run(cmd *cobra.Command) {
 	}
 
 	if vacancies.Len() == 0 {
-		logger.Info("exiting", zap.String("reason", "no vacancies left"))
+		logger.Info("exiting", zap.String("reason", "no vacancies found"))
 		return
 	}
 
-	deps := filtering.Deps{HH: hh, Logger: logger, Resume: selectedResume}
-	steps := []filtering.Filter{
-		filtering.NewWithTest(),
-		filtering.NewAppliedHistory(cmd),
-		filtering.NewEmployers(),
-		filtering.NewExcludeFile(),
-		filtering.NewAIFit(),
-	}
+	filters := prepareFilters(ctx, cmd, hh, config, selectedResume, logger)
 
-	filterCfg := &filtering.Config{}
-	if config.Apply != nil && config.Apply.Exclude != nil {
-		filterCfg.Employers = append(filterCfg.Employers, config.Apply.Exclude.Employers...)
-	}
-	if config.AI != nil {
-		filterCfg.AI = &filtering.AIConfig{
-			Enabled:         config.AI.Enabled,
-			Provider:        config.AI.Provider,
-			MinimumFitScore: config.AI.MinimumFitScore,
-		}
-		if config.AI.Gemini != nil {
-			filterCfg.AI.Gemini = &filtering.GeminiConfig{
-				Model:        config.AI.Gemini.Model,
-				MaxRetries:   config.AI.Gemini.MaxRetries,
-				MaxLogLength: config.AI.Gemini.MaxLogLength,
-			}
-		}
-	}
-
-	if config.AI == nil || !config.AI.Enabled {
-		filtering.DisableByName(steps, "ai_fit", "disabled via config")
-	} else {
-		matcher, err := newAIMatcher(ctx, config, logger)
-		if err != nil {
-			logger.Fatal("building ai matcher", zap.Error(err))
-		}
-		deps.Matcher = matcher
-	}
-
-	filtered, err := filtering.Run(ctx, filterCfg, deps, steps, vacancies)
+	filtered, err := filters.RunFilters(ctx, vacancies)
 	if err != nil {
 		logger.Fatal("filtering failed", zap.Error(err))
 	}
 	vacancies = filtered
 
 	if vacancies.Len() == 0 {
-		logger.Info("exiting", zap.String("reason", "no vacancies left after filtering"))
+		logger.Info("exiting", zap.String("reason", "no vacancies left after filters"))
 		return
 	}
 
@@ -343,37 +307,23 @@ func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, 
 	return nil
 }
 
-func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matcher, error) {
-	if cfg == nil || cfg.AI == nil || !cfg.AI.Enabled {
-		return nil, nil
-	}
-
-	provider := strings.TrimSpace(strings.ToLower(cfg.AI.Provider))
+func newAIMatcher(ctx context.Context, cfg *AIConfig, logger *zap.Logger) (ai.Matcher, error) {
+	provider := strings.TrimSpace(strings.ToLower(cfg.Provider))
 	if provider != "" && provider != "gemini" {
-		return nil, fmt.Errorf("unsupported ai provider: %s", cfg.AI.Provider)
+		return nil, fmt.Errorf("unsupported ai provider: %s", cfg.Provider)
 	}
 
-	if cfg.AI.Gemini == nil {
-		return nil, fmt.Errorf("gemini configuration is required when ai is enabled")
-	}
-
-	apiKey := strings.TrimSpace(cfg.AI.Gemini.APIKey)
-	if apiKey == "" {
-		apiKey = strings.TrimSpace(os.Getenv("GOOGLE_API_KEY"))
-	}
-	if apiKey == "" {
-		apiKey = strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	}
+	apiKey := strings.TrimSpace(cfg.Gemini.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("gemini api key is required (set ai.gemini.api-key or GOOGLE_API_KEY/GEMINI_API_KEY)")
 	}
 
-	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.AI.Gemini.Model, cfg.AI.Gemini.MaxRetries, logger)
+	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.Gemini.Model, cfg.Gemini.MaxRetries, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	minScore := cfg.AI.MinimumFitScore
+	minScore := cfg.MinimumFitScore
 	if minScore < 0 {
 		minScore = 0
 	}
@@ -384,7 +334,7 @@ func newAIMatcher(ctx context.Context, cfg *Config, logger *zap.Logger) (ai.Matc
 		zap.Int("ai_retry_attempts", generator.MaxRetries()),
 	)
 
-	matcher := gemini.NewMatcher(generator, logger, minScore, cfg.AI.Gemini.MaxLogLength)
+	matcher := gemini.NewMatcher(generator, logger, minScore, cfg.Gemini.MaxLogLength)
 
 	return matcher, nil
 }
@@ -398,4 +348,73 @@ func getVacancies(hh *headhunter.Client, config *Config, logger *zap.Logger) (*h
 
 	logger.Info("getting vacancies", zap.Int("count", results.Len()))
 	return results, nil
+}
+
+func prepareFilters(ctx context.Context, cmd *cobra.Command, hh *headhunter.Client, config *Config, resume *headhunter.Resume, logger *zap.Logger) *filtering.Filtering {
+	steps := []filtering.Filter{
+		filtering.NewWithTest(),
+		prepareAppliedHistoryFilter(cmd, hh, logger),
+		filtering.NewExludedEmployers(config.Apply.Exclude.Employers),
+		filtering.NewExcludeFile(config.ExcludeFile),
+	}
+
+	aiFilter, err := prepareAIFilter(ctx, hh, config.AI, resume, logger)
+	if err != nil {
+		logger.Warn("skipping AI filter", zap.Error(err))
+	} else if aiFilter != nil {
+		steps = append(steps, aiFilter)
+	}
+
+	return filtering.New(steps, logger)
+}
+
+func prepareAppliedHistoryFilter(cmd *cobra.Command, client *headhunter.Client, logger *zap.Logger) filtering.Filter {
+	ignore := false
+	if cmd != nil {
+		flag := cmd.Flag("do-not-exclude-applied")
+		if flag != nil && strings.EqualFold(flag.Value.String(), "true") {
+			ignore = true
+		}
+	}
+
+	cfg := &filtering.AppliedHistoryConfig{Ignore: ignore}
+	deps := &filtering.AppliedHistoryDeps{
+		HH:     client,
+		Logger: logger,
+	}
+
+	return filtering.NewAppliedHistory(cfg, deps)
+}
+
+func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIConfig, resume *headhunter.Resume, logger *zap.Logger) (filtering.Filter, error) {
+	if config == nil || !config.Enabled {
+		return nil, nil
+	}
+
+	if config.Gemini == nil {
+		return nil, fmt.Errorf("gemini configuration is required when ai filter is enabled")
+	}
+
+	aiConfig := &filtering.AIFitFilterConfig{
+		Enabled:         config.Enabled,
+		Provider:        config.Provider,
+		MinimumFitScore: config.MinimumFitScore,
+		Gemini: &filtering.AIGeminiConfig{
+			Model:        config.Gemini.Model,
+			MaxRetries:   config.Gemini.MaxRetries,
+			MaxLogLength: config.Gemini.MaxLogLength,
+		},
+	}
+
+	matcher, err := newAIMatcher(ctx, config, logger)
+	if err != nil {
+		return nil, fmt.Errorf("building ai matcher: %w", err)
+	}
+
+	return filtering.NewAIFit(aiConfig, &filtering.AIFitFilterDeps{
+		Logger:  logger,
+		HH:      client,
+		Resume:  resume,
+		Matcher: matcher,
+	}), nil
 }

@@ -13,13 +13,12 @@ import (
 
 	"github.com/spigell/hh-responder/internal/ai"
 	"github.com/spigell/hh-responder/internal/headhunter"
-	"github.com/spigell/hh-responder/internal/utils"
+	"github.com/spigell/hh-responder/internal/logger"
 	"go.uber.org/zap"
 )
 
 type contentGenerator interface {
 	GenerateContent(ctx context.Context, prompt string) (string, error)
-	Model() string
 }
 
 type Matcher struct {
@@ -47,20 +46,7 @@ func NewMatcher(generator contentGenerator, logger *zap.Logger, minScore float64
 	}
 }
 
-func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails, vacancy *headhunter.Vacancy) (*ai.FitAssessment, error) {
-	if resume == nil {
-		return nil, fmt.Errorf("resume details are required")
-	}
-	if vacancy == nil {
-		return nil, fmt.Errorf("vacancy is required")
-	}
-
-	resumePayload := map[string]any{
-		"id":      resume.ID,
-		"title":   resume.Title,
-		"details": resume.Raw,
-	}
-
+func (m *Matcher) Evaluate(ctx context.Context, resumePayload map[string]any, vacancy *headhunter.Vacancy) (*ai.FitAssessment, error) {
 	resumeJSON, err := json.MarshalIndent(resumePayload, "", "")
 	if err != nil {
 		return nil, fmt.Errorf("marshal resume payload: %w", err)
@@ -75,9 +61,8 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 
 	requestFields := []zap.Field{
 		zap.String("vacancy_id", vacancy.ID),
-		zap.String("resume_id", resume.ID),
 		zap.Int("prompt_length", utf8.RuneCountInString(prompt)),
-		zap.String("prompt_preview", utils.TruncateForLog(prompt, m.maxLogLen)),
+		zap.String("prompt_preview", logger.TruncateForLog(prompt, m.maxLogLen)),
 	}
 
 	m.logger.Debug("gemini generate content request", requestFields...)
@@ -89,9 +74,8 @@ func (m *Matcher) Evaluate(ctx context.Context, resume *headhunter.ResumeDetails
 
 	m.logger.Debug("gemini generate content response",
 		zap.String("vacancy_id", vacancy.ID),
-		zap.String("resume_id", resume.ID),
 		zap.Int("response_length", utf8.RuneCountInString(raw)),
-		zap.String("response_preview", utils.TruncateForLog(raw, m.maxLogLen)),
+		zap.String("response_preview", logger.TruncateForLog(raw, m.maxLogLen)),
 	)
 
 	assessment, err := parseResponse(raw)
@@ -214,5 +198,3 @@ func coerceString(v any) string {
 		return string(bytes)
 	}
 }
-
-// TruncateForLog is provided by internal/util for reuse across components.
