@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	defaultModel      = "gemini-2.5-pro"
 	defaultMaxRetries = 5
 	retryInitialDelay = 2 * time.Second
 	retryMaxDelay     = 30 * time.Second
@@ -53,10 +52,6 @@ func NewGenerator(ctx context.Context, apiKey, model string, maxRetries int, log
 		return nil, fmt.Errorf("create genai client: %w", err)
 	}
 
-	if model = strings.TrimSpace(model); model == "" {
-		model = defaultModel
-	}
-
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
 	}
@@ -71,34 +66,12 @@ func NewGenerator(ctx context.Context, apiKey, model string, maxRetries int, log
 
 // GenerateContent sends the prompt to Gemini and returns the first textual response.
 func (g *Generator) GenerateContent(ctx context.Context, prompt string) (string, error) {
-	if g == nil || g.models == nil {
-		return "", errors.New("gemini generator is not initialized")
-	}
-
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return "", errors.New("prompt must not be empty")
 	}
 
 	return g.generateWithModel(ctx, g.model, prompt)
-}
-
-func (g *Generator) MaxRetries() int {
-	if g == nil {
-		return 0
-	}
-	if g.maxRetries <= 0 {
-		return defaultMaxRetries
-	}
-	return g.maxRetries
-}
-
-// Model returns the configured model name for the generator.
-func (g *Generator) Model() string {
-	if g == nil {
-		return ""
-	}
-	return g.model
 }
 
 func (g *Generator) generateWithModel(ctx context.Context, model, prompt string) (string, error) {

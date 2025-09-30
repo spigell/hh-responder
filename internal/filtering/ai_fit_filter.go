@@ -14,7 +14,7 @@ import (
 )
 
 type aiFitFilter struct {
-	enabled    bool
+	enabled     bool
 	reason      string
 	config      *AIFitFilterConfig
 	assessments map[string]*ai.FitAssessment
@@ -23,10 +23,10 @@ type aiFitFilter struct {
 }
 
 type AIFitFilterDeps struct {
-	Logger *zap.Logger
-	HH *headhunter.Client
+	Logger  *zap.Logger
+	HH      *headhunter.Client
 	Matcher ai.Matcher
-	Resume *headhunter.Resume
+	Resume  *headhunter.Resume
 }
 
 type AIFitFilterConfig struct {
@@ -47,8 +47,8 @@ type AIGeminiConfig struct {
 func NewAIFit(cfg *AIFitFilterConfig, deps *AIFitFilterDeps) Filter {
 	return &aiFitFilter{
 		enabled: cfg.Enabled,
-		deps: deps,
-		config: cfg,
+		deps:    deps,
+		config:  cfg,
 	}
 }
 
@@ -66,7 +66,6 @@ func (f *aiFitFilter) WithDeps(client *headhunter.Client, matcher *gemini.Matche
 	f.deps.Resume = resume
 }
 
-
 func (f *aiFitFilter) IsEnabled() bool { return f.enabled }
 
 func (f *aiFitFilter) Validate() error {
@@ -79,7 +78,7 @@ func (f *aiFitFilter) Validate() error {
 	}
 	if strings.TrimSpace(f.config.Gemini.Model) == "" {
 		return fmt.Errorf("gemini model is required when ai filter is enabled")
-	} 
+	}
 	return nil
 }
 
@@ -113,20 +112,21 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 		detailed := vacancy
 		full, err := f.deps.HH.GetVacancy(vacancy.ID)
 		if err != nil {
-			f.deps.Logger.Warn("fetching detailed vacancy failed",
+			f.deps.Logger.Warn("fetching detailed vacancy failed. It will be skipped.",
 				zap.String("vacancy_id", vacancy.ID),
 				zap.Error(err),
 			)
+			continue
 		}
 
 		detailed = full
 
 		assessment, err := f.deps.Matcher.Evaluate(ctx, resume, detailed)
 		if err != nil {
-				f.deps.Logger.Warn("AI evaluation failed",
-					zap.String("vacancy_id", vacancy.ID),
-					zap.Error(err),
-				)
+			f.deps.Logger.Warn("AI evaluation failed",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.Error(err),
+			)
 			detailed.AI = &headhunter.AIAssessment{Error: err.Error()}
 			approved = append(approved, detailed)
 			continue
@@ -138,13 +138,13 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 				zap.Float64("ai_score", assessment.Score),
 				zap.String("reason", assessment.Reason),
 			)
-		continue
+			continue
 		}
 
-	f.deps.Logger.Info("vacancy approved by AI",
-		zap.String("vacancy_id", vacancy.ID),
-		zap.Float64("ai_score", assessment.Score),
-	)
+		f.deps.Logger.Info("vacancy approved by AI",
+			zap.String("vacancy_id", vacancy.ID),
+			zap.Float64("ai_score", assessment.Score),
+		)
 
 		detailed.AI = &headhunter.AIAssessment{
 			Fit:     assessment.Fit,
@@ -160,9 +160,9 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 	vacancies.Items = approved
 
 	f.deps.Logger.Info("AI filtering completed",
-			zap.Int("initial_vacancies", initial),
-			zap.Int("approved_vacancies", len(approved)),
-		)
+		zap.Int("initial_vacancies", initial),
+		zap.Int("approved_vacancies", len(approved)),
+	)
 
 	return assessments, nil
 }

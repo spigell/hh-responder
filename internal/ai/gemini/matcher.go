@@ -33,7 +33,7 @@ var promptTemplate string
 
 const defaultMaxLogLength = 200
 
-func NewMatcher(generator contentGenerator, logger *zap.Logger, minScore float64, maxLogLength int) *Matcher {
+func NewMatcher(generator contentGenerator, minScore float64, maxLogLength int, logger *zap.Logger) *Matcher {
 	if maxLogLength <= 0 {
 		maxLogLength = defaultMaxLogLength
 	}

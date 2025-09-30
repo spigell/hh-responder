@@ -318,7 +318,13 @@ func newAIMatcher(ctx context.Context, cfg *AIConfig, logger *zap.Logger) (ai.Ma
 		return nil, fmt.Errorf("gemini api key is required (set ai.gemini.api-key or GOOGLE_API_KEY/GEMINI_API_KEY)")
 	}
 
-	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.Gemini.Model, cfg.Gemini.MaxRetries, logger)
+	genLogger := logger.With(
+		zap.String("provider", "gemini"),
+		zap.String("model", cfg.Gemini.Model),
+		zap.Int("ai_retry_attempts", cfg.Gemini.MaxRetries),
+	)
+
+	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.Gemini.Model, cfg.Gemini.MaxRetries, genLogger)
 	if err != nil {
 		return nil, err
 	}
@@ -328,13 +334,13 @@ func newAIMatcher(ctx context.Context, cfg *AIConfig, logger *zap.Logger) (ai.Ma
 		minScore = 0
 	}
 
-	logger.Info("AI assistance enabled",
+	matcherLogger := logger.With(
 		zap.String("provider", "gemini"),
+		zap.String("model", cfg.Gemini.Model),
 		zap.Float64("minimum_fit_score", minScore),
-		zap.Int("ai_retry_attempts", generator.MaxRetries()),
 	)
 
-	matcher := gemini.NewMatcher(generator, logger, minScore, cfg.Gemini.MaxLogLength)
+	matcher := gemini.NewMatcher(generator, minScore, cfg.Gemini.MaxLogLength, matcherLogger)
 
 	return matcher, nil
 }
