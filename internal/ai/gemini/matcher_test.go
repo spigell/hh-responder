@@ -14,7 +14,7 @@ type stubGenerator struct {
 	lastPrompt string
 }
 
-func (s *stubGenerator) GenerateContent(ctx context.Context, prompt string) (string, error) {
+func (s *stubGenerator) GenerateContent(_ context.Context, prompt string) (string, error) {
 	s.lastPrompt = prompt
 	if s.err != nil {
 		return "", s.err

@@ -19,7 +19,7 @@ type Filter interface {
 }
 
 type Filtering struct {
-	steps []Filter
+	steps  []Filter
 	logger *zap.Logger
 }
 
@@ -30,13 +30,11 @@ type Step struct {
 	Left    int
 }
 
-
 func New(filters []Filter, logger *zap.Logger) *Filtering {
 	return &Filtering{
-		steps: filters,
+		steps:  filters,
 		logger: logger,
 	}
-
 }
 
 // DisableByName marks a filter with the provided name as disabled while keeping it in the list.
@@ -88,7 +86,6 @@ func (f *Filtering) RunFilters(ctx context.Context, vacancies *headhunter.Vacanc
 		)
 
 		vacancies = next
-
 	}
 
 	return vacancies, nil

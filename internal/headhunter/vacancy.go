@@ -220,21 +220,27 @@ func (v *Vacancies) ReportByEmployer() map[string][]map[string]string {
 			"brief requirement":    vacancy.Snipet.Requirement,
 			"brief responsibility": vacancy.Snipet.Responsibility,
 		}
-		if vacancy.AI != nil {
-			if vacancy.AI.Error != "" {
-				entry["ai_error"] = vacancy.AI.Error
-			} else {
-				entry["ai_fit"] = strconv.FormatBool(vacancy.AI.Fit)
-				if !math.IsNaN(vacancy.AI.Score) {
-					entry["ai_score"] = strconv.FormatFloat(vacancy.AI.Score, 'f', 2, 64)
-				}
-				if vacancy.AI.Reason != "" {
-					entry["ai_reason"] = vacancy.AI.Reason
-				}
-				if vacancy.AI.Message != "" {
-					entry["ai_message"] = vacancy.AI.Message
-				}
-			}
+		ai := vacancy.AI
+		if ai == nil {
+			report[key] = append(report[key], entry)
+			continue
+		}
+
+		if ai.Error != "" {
+			entry["ai_error"] = ai.Error
+			report[key] = append(report[key], entry)
+			continue
+		}
+
+		entry["ai_fit"] = strconv.FormatBool(ai.Fit)
+		if !math.IsNaN(ai.Score) {
+			entry["ai_score"] = strconv.FormatFloat(ai.Score, 'f', 2, 64)
+		}
+		if ai.Reason != "" {
+			entry["ai_reason"] = ai.Reason
+		}
+		if ai.Message != "" {
+			entry["ai_message"] = ai.Message
 		}
 		report[key] = append(report[key], entry)
 	}
