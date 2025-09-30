@@ -14,6 +14,8 @@ Follow standard Go conventions: tabs for indentation, mixedCaps for exported ide
 
 Avoid sprinkling `nil` checks on loggers throughout the code; rely on the shared helpers in `internal/logger` to handle absent loggers. Treat the logger as always available and skip manual `nil` guards.
 
+Keep the "happy path" aligned to the left, returning early for error checks or exceptional branches. Structure functions so the primary success flow is easy to scan without deep indentation, using guard clauses or small helper functions when necessary.
+
 ## Testing Guidelines
 Add table-driven `_test.go` files alongside the code they exercise, placing fixtures inside the same package when possible. Focus on deterministic tests that mock external hh.ru responses; leverage the existing interfaces in `internal/headhunter` to swap in fakes. Target meaningful coverage of new logic and avoid relying on live external services in CI. Record any manual verification steps in the PR if automation is not yet feasible.
 
