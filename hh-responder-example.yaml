@@ -42,10 +42,9 @@ ai:
   provider: gemini
   minimum-fit-score: 0.6
   gemini:
-    # Prefer storing the key outside the config file. Provide either api-key-file
-    # (or GEMINI_API_KEY_FILE env var) or inline api-key / GEMINI_API_KEY env var.
+    # The Gemini API key must be stored in a file. Configure the path here or
+    # provide it via the GEMINI_API_KEY_FILE environment variable.
     # api-key-file: /path/to/gemini-api-key
-    api-key: "${GEMINI_API_KEY}"
     model: gemini-2.5-pro
     # Number of attempts per request on transient or short quota errors (>=1).
     max-retries: 3

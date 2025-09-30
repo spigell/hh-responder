@@ -26,24 +26,23 @@ func Load(src Source) (string, error) {
 		name = "secret"
 	}
 
-	if file := strings.TrimSpace(src.File); file != "" {
+	file := strings.TrimSpace(src.File)
+	if file != "" {
 		data, err := os.ReadFile(file)
 		if err != nil {
 			return "", fmt.Errorf("reading %s from file %q: %w", name, file, err)
 		}
-
 		src.Value = string(data)
 		src.File = file
 	}
 
 	secret := strings.TrimSpace(src.Value)
-	if secret != "" {
-		return secret, nil
+	if secret == "" {
+		if src.File != "" {
+			return "", fmt.Errorf("%s file %q is empty", name, src.File)
+		}
+		return "", fmt.Errorf("%s is not configured", name)
 	}
 
-	if src.File != "" {
-		return "", fmt.Errorf("%s file %q is empty", name, src.File)
-	}
-
-	return "", fmt.Errorf("%s is not configured", name)
+	return secret, nil
 }

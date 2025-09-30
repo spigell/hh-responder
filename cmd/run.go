@@ -307,12 +307,11 @@ func newAIMatcher(ctx context.Context, cfg *AIConfig, logger *zap.Logger) (ai.Ma
 	}
 
 	apiKey, err := secrets.Load(secrets.Source{
-		Name:  "gemini api key",
-		Value: cfg.Gemini.APIKey,
-		File:  cfg.Gemini.APIKeyFile,
+		Name: "gemini api key",
+		File: cfg.Gemini.APIKeyFile,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w (set ai.gemini.api-key, ai.gemini.api-key-file, GEMINI_API_KEY, or GEMINI_API_KEY_FILE)", err)
+		return nil, fmt.Errorf("%w (set ai.gemini.api-key-file or GEMINI_API_KEY_FILE)", err)
 	}
 
 	genLogger := logger.With(
