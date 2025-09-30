@@ -272,7 +272,6 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 
 func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, vacancies *headhunter.Vacancies, defaultMessage string) error {
 	for _, vacancy := range vacancies.Items {
-
 		message := vacancy.AI.Message
 		if message == "" {
 			message = defaultMessage

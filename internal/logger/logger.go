@@ -1,9 +1,10 @@
 package logger
 
 import (
+	"strings"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"strings"
 )
 
 func New(json bool, debug bool) (*zap.Logger, error) {

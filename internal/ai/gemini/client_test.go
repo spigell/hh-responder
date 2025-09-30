@@ -37,7 +37,7 @@ func (f *fakeModels) enqueue(model string, resp *genai.GenerateContentResponse, 
 	f.queue[model] = append(f.queue[model], fakeResponse{resp: resp, err: err})
 }
 
-func (f *fakeModels) GenerateContent(ctx context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+func (f *fakeModels) GenerateContent(_ context.Context, model string, _ []*genai.Content, _ *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, callRecord{model: model})
@@ -58,20 +58,21 @@ func TestGeneratorRetriesOnTemporaryError(t *testing.T) {
 	defer func() { sleep = originalSleep }()
 
 	models := newFakeModels()
+	modelName := "gemini-pro"
 	tempErr := genai.APIError{Code: http.StatusInternalServerError, Status: "INTERNAL"}
-	models.enqueue("gemini-pro", nil, tempErr)
-	models.enqueue("gemini-pro", &genai.GenerateContentResponse{
+	g := &Generator{
+		models:     models,
+		model:      modelName,
+		maxRetries: 2,
+		logger:     zap.NewNop(),
+	}
+
+	models.enqueue(modelName, nil, tempErr)
+	models.enqueue(modelName, &genai.GenerateContentResponse{
 		Candidates: []*genai.Candidate{{
 			Content: &genai.Content{Parts: []*genai.Part{{Text: "retry ok"}}},
 		}},
 	}, nil)
-
-	g := &Generator{
-		models:     models,
-		model:      "gemini-pro",
-		maxRetries: 2,
-		logger:     zap.NewNop(),
-	}
 
 	output, err := g.GenerateContent(context.Background(), " say hi ")
 	if err != nil {
@@ -93,16 +94,17 @@ func TestGeneratorStopsAfterRetriesExhausted(t *testing.T) {
 	defer func() { sleep = originalSleep }()
 
 	models := newFakeModels()
+	modelName := "gemini-pro-latest"
 	tempErr := genai.APIError{Code: http.StatusInternalServerError, Status: "INTERNAL"}
-	models.enqueue("gemini-pro", nil, tempErr)
-	models.enqueue("gemini-pro", nil, tempErr)
-
 	g := &Generator{
 		models:     models,
-		model:      "gemini-pro",
+		model:      modelName,
 		maxRetries: 2,
 		logger:     zap.NewNop(),
 	}
+
+	models.enqueue(modelName, nil, tempErr)
+	models.enqueue(modelName, nil, tempErr)
 
 	_, err := g.GenerateContent(context.Background(), " say hi ")
 	if err == nil {
@@ -116,19 +118,20 @@ func TestGeneratorStopsAfterRetriesExhausted(t *testing.T) {
 
 func TestGeneratorDoesNotRetryOnLongQuotaDelay(t *testing.T) {
 	models := newFakeModels()
+	modelName := "gemini-flash"
 	quotaErr := genai.APIError{
 		Code:    http.StatusTooManyRequests,
 		Status:  "RESOURCE_EXHAUSTED",
 		Message: "quota exhausted, retry after 60 seconds",
 	}
-	models.enqueue("gemini-pro", nil, quotaErr)
-
 	g := &Generator{
 		models:     models,
-		model:      "gemini-pro",
+		model:      modelName,
 		maxRetries: 3,
 		logger:     zap.NewNop(),
 	}
+
+	models.enqueue(modelName, nil, quotaErr)
 
 	_, err := g.GenerateContent(context.Background(), " say hi ")
 	if err == nil {

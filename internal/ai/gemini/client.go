@@ -111,7 +111,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 				zap.Error(err),
 			)
 
-			g.logger.Info("gemini request retry occured",
+			g.logger.Info("gemini request retry occurred",
 				zap.String("model", model),
 				zap.Int("attempt", attempt),
 				zap.Int("max_attempts", MaxAttempts),
@@ -134,7 +134,7 @@ func (g *Generator) generateWithModel(ctx context.Context, model, prompt string)
 	}
 
 	if response == nil {
-		return "", errors.New("gemini generate content failed. Retries failed.")
+		return "", errors.New("gemini generate content failed: retries exhausted")
 	}
 
 	output := extractText(response)
@@ -332,7 +332,7 @@ func secondsToDuration(v float64) time.Duration {
 }
 
 func (g *Generator) usageMetadata(resp *genai.GenerateContentResponse) []zap.Field {
-	fields := make([]zap.Field, 0, 0)
+	var fields []zap.Field
 
 	if resp.UsageMetadata == nil {
 		return fields

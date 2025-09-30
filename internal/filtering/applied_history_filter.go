@@ -56,7 +56,7 @@ func (f *appliedHistoryFilter) Validate() error {
 	return nil
 }
 
-func (f *appliedHistoryFilter) Apply(ctx context.Context, v *headhunter.Vacancies) (*headhunter.Vacancies, Step, error) {
+func (f *appliedHistoryFilter) Apply(_ context.Context, v *headhunter.Vacancies) (*headhunter.Vacancies, Step, error) {
 	initial := v.Len()
 	if f.ignore {
 		f.deps.Logger.Info("ignoring already applied vacancies", zap.String("reason", forceFlagSetMsg))

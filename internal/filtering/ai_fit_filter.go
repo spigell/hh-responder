@@ -71,7 +71,7 @@ func (f *aiFitFilter) IsEnabled() bool { return f.enabled }
 
 func (f *aiFitFilter) Validate() error {
 	if f.deps == nil {
-		return fmt.Errorf("Deps are not initialized. Fitler is not usable.")
+		return fmt.Errorf("deps are not initialized: filter is not usable")
 	}
 
 	if f.config.Gemini == nil {
@@ -91,10 +91,7 @@ func (f *aiFitFilter) Apply(ctx context.Context, v *headhunter.Vacancies) (*head
 		return v, Step{}, fmt.Errorf("get resume details: %w", err)
 	}
 
-	assessments, err := f.evaluateVacanciesWithMatcher(ctx, resumeDetails, v)
-	if err != nil {
-		return v, Step{}, err
-	}
+	assessments := f.evaluateVacanciesWithMatcher(ctx, resumeDetails, v)
 
 	f.assessments = make(map[string]*ai.FitAssessment, len(assessments))
 	maps.Copy(f.assessments, assessments)
@@ -103,8 +100,7 @@ func (f *aiFitFilter) Apply(ctx context.Context, v *headhunter.Vacancies) (*head
 	return v, Step{Initial: initial, Dropped: initial - left, Left: left}, nil
 }
 
-func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume map[string]any, vacancies *headhunter.Vacancies) (map[string]*ai.FitAssessment, error) {
-
+func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume map[string]any, vacancies *headhunter.Vacancies) map[string]*ai.FitAssessment {
 	initial := vacancies.Len()
 	approved := make([]*headhunter.Vacancy, 0, initial)
 	assessments := make(map[string]*ai.FitAssessment)
@@ -172,7 +168,7 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 		zap.Int("approved_vacancies", len(approved)),
 	)
 
-	return assessments, nil
+	return assessments
 }
 
 func (f *aiFitFilter) appendToExcludeFile(vacancy *headhunter.Vacancy) error {
