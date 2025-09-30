@@ -361,7 +361,7 @@ func prepareFilters(ctx context.Context, cmd *cobra.Command, hh *headhunter.Clie
 		filtering.NewExcludeFile(config.ExcludeFile),
 	}
 
-	aiFilter, err := prepareAIFilter(ctx, hh, config.AI, resume, logger)
+	aiFilter, err := prepareAIFilter(ctx, hh, config.AI, resume, logger, config.ExcludeFile)
 	if err != nil {
 		logger.Warn("skipping AI filter", zap.Error(err))
 	} else if aiFilter != nil {
@@ -389,7 +389,7 @@ func prepareAppliedHistoryFilter(cmd *cobra.Command, client *headhunter.Client, 
 	return filtering.NewAppliedHistory(cfg, deps)
 }
 
-func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIConfig, resume *headhunter.Resume, logger *zap.Logger) (filtering.Filter, error) {
+func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIConfig, resume *headhunter.Resume, logger *zap.Logger, excludeFile string) (filtering.Filter, error) {
 	if config == nil || !config.Enabled {
 		return nil, nil
 	}
@@ -415,9 +415,10 @@ func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIC
 	}
 
 	return filtering.NewAIFit(aiConfig, &filtering.AIFitFilterDeps{
-		Logger:  logger,
-		HH:      client,
-		Resume:  resume,
-		Matcher: matcher,
+		Logger:      logger,
+		HH:          client,
+		Resume:      resume,
+		Matcher:     matcher,
+		ExcludeFile: excludeFile,
 	}), nil
 }
