@@ -23,10 +23,11 @@ type aiFitFilter struct {
 }
 
 type AIFitFilterDeps struct {
-	Logger  *zap.Logger
-	HH      *headhunter.Client
-	Matcher ai.Matcher
-	Resume  *headhunter.Resume
+	Logger      *zap.Logger
+	HH          *headhunter.Client
+	Matcher     ai.Matcher
+	Resume      *headhunter.Resume
+	ExcludeFile string
 }
 
 type AIFitFilterConfig struct {
@@ -138,6 +139,13 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 				zap.Float64("ai_score", assessment.Score),
 				zap.String("reason", assessment.Reason),
 			)
+
+			if err := f.appendToExcludeFile(detailed); err != nil {
+				f.deps.Logger.Warn("failed to append vacancy to exclude file",
+					zap.String("vacancy_id", vacancy.ID),
+					zap.Error(err),
+				)
+			}
 			continue
 		}
 
@@ -165,4 +173,30 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 	)
 
 	return assessments, nil
+}
+
+func (f *aiFitFilter) appendToExcludeFile(vacancy *headhunter.Vacancy) error {
+	path := strings.TrimSpace(f.deps.ExcludeFile)
+	if path == "" {
+		return nil
+	}
+
+	excluded, err := headhunter.GetExludedVacanciesFromFile(path)
+	if err != nil {
+		return fmt.Errorf("load excluded vacancies: %w", err)
+	}
+
+	toAppend := (&headhunter.Vacancies{Items: []*headhunter.Vacancy{vacancy}}).ToExcluded()
+	excluded.Append(toAppend)
+
+	if err := excluded.ToFile(path); err != nil {
+		return fmt.Errorf("write excluded vacancies: %w", err)
+	}
+
+	f.deps.Logger.Info("vacancy appended to exclude file",
+		zap.String("vacancy_id", vacancy.ID),
+		zap.String("exclude_file", path),
+	)
+
+	return nil
 }
