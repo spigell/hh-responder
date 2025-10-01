@@ -36,10 +36,20 @@ type AIConfig struct {
 }
 
 type GeminiConfig struct {
-	APIKeyFile   string `mapstructure:"api-key-file"`
-	Model        string `mapstructure:"model"`
-	MaxRetries   int    `mapstructure:"max-retries"`
-	MaxLogLength int    `mapstructure:"max-log-length"`
+	APIKeyFile      string                       `mapstructure:"api-key-file"`
+	Model           string                       `mapstructure:"model"`
+	MaxRetries      int                          `mapstructure:"max-retries"`
+	MaxLogLength    int                          `mapstructure:"max-log-length"`
+	PromptOverrides *GeminiPromptOverridesConfig `mapstructure:"prompt-overrides"`
+}
+
+type GeminiPromptOverridesConfig struct {
+	ExtraCriteria     string `mapstructure:"extra-criteria"`
+	DealBreakers      string `mapstructure:"deal-breakers"`
+	CustomKeywords    string `mapstructure:"custom-keywords"`
+	Tone              string `mapstructure:"tone"`
+	RegionConstraints string `mapstructure:"region-constraints"`
+	UserInstructions  string `mapstructure:"user-instructions"`
 }
 
 var (

@@ -336,6 +336,16 @@ func newAIMatcher(ctx context.Context, cfg *AIConfig, logger *zap.Logger) (ai.Ma
 	)
 
 	matcher := gemini.NewMatcher(generator, minScore, cfg.Gemini.MaxLogLength, matcherLogger)
+	if cfg.Gemini.PromptOverrides != nil {
+		matcher.SetPromptOverrides(gemini.PromptOverrides{
+			ExtraCriteria:     cfg.Gemini.PromptOverrides.ExtraCriteria,
+			DealBreakers:      cfg.Gemini.PromptOverrides.DealBreakers,
+			CustomKeywords:    cfg.Gemini.PromptOverrides.CustomKeywords,
+			Tone:              cfg.Gemini.PromptOverrides.Tone,
+			RegionConstraints: cfg.Gemini.PromptOverrides.RegionConstraints,
+			UserInstructions:  cfg.Gemini.PromptOverrides.UserInstructions,
+		})
+	}
 
 	return matcher, nil
 }

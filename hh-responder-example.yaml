@@ -50,6 +50,16 @@ ai:
     max-retries: 3
     # Maximum number of characters logged for prompt/response previews.
     max-log-length: 200
+    # Optional natural-language overrides for the Gemini prompt. They are
+    # advisory-only and cannot relax system or template rules.
+    # prompt-overrides:
+    #   extra-criteria: "Highlight cross-team collaboration examples"
+    #   deal-breakers: "No relocation, contract roles"
+    #   custom-keywords: "Terraform, Kubernetes"
+    #   tone: "Confident"
+    #   region-constraints: "EMEA preferred"
+    #   user-instructions: |
+    #     Focus on remote work experience and mention evening availability in CET.
 
 # Optional custom user-agent header to send with requests to hh.ru API.
 # Defaults to the built-in hh-responder identifier when omitted.
