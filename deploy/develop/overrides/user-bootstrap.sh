@@ -6,6 +6,8 @@ USER_UID=7000
 USER_HOME="/home/${USER_NAME}"
 CODEX_CONFIG_SOURCE="/project/deploy/develop/overrides/codex-config.toml"
 CODEX_CONFIG_DEST="${USER_HOME}/.codex/config.toml"
+HH_TOKEN_SECRET_SOURCE="/secrets/hh-token/hh-token.txt"
+HH_TOKEN_SECRET_DEST="${USER_HOME}/.hh-token.txt"
 
 ensure_user() {
   if ! id -u "${USER_NAME}" >/dev/null 2>&1; then
@@ -21,7 +23,7 @@ EOF
 
   rm -rf "${CODEX_CONFIG_DEST}"
   ln -s "${CODEX_CONFIG_SOURCE}" "${CODEX_CONFIG_DEST}"
-  # chmod 600 "${CODEX_CONFIG_DEST}"
+  ln -s "${HH_TOKEN_SECRET_SOURCE}" "${HH_TOKEN_SECRET_DEST}"
   
   chown -R "${USER_UID}:${USER_UID}" "${USER_HOME}"
 

@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
+	"github.com/spigell/hh-responder/internal/ai"
+	"github.com/spigell/hh-responder/internal/ai/gemini"
+	"github.com/spigell/hh-responder/internal/filtering"
 	"github.com/spigell/hh-responder/internal/headhunter"
 	"github.com/spigell/hh-responder/internal/logger"
+	"github.com/spigell/hh-responder/internal/secrets"
 
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -19,7 +22,6 @@ import (
 )
 
 const (
-	forceFlagSetMsg           = "force flag is set"
 	PromptYes                 = "Yes"
 	PromptNo                  = "No"
 	PromptBack                = "back"
@@ -27,6 +29,7 @@ const (
 	PromptManualApply         = "Apply vacancies in manual mode"
 	PromptAppendToExcludeFile = "Append all vacancies to exclude file"
 	PromptVacanciesToFile     = "Dump vacancies to file"
+	defaultFallbackMessage    = "Hello! I would like to apply for this vacancy."
 )
 
 var errExit = errors.New("exit requested")
@@ -78,6 +81,10 @@ func run(cmd *cobra.Command) {
 		logger.Fatal("config is required")
 	}
 
+	if config.Apply == nil || config.Apply.Resume == "" {
+		logger.Fatal("resume title is required under apply.resume to evaluate and apply to vacancies")
+	}
+
 	token, err := resolveToken(config)
 	if err != nil {
 		logger.Fatal(
@@ -87,21 +94,49 @@ func run(cmd *cobra.Command) {
 		)
 	}
 
-	hh := headhunter.New(ctx, logger, token)
+	hh := headhunter.New(ctx, token, logger)
 
-	if config != nil && config.UserAgent != "" {
+	if config.UserAgent != "" {
 		hh.UserAgent = config.UserAgent
+	}
+
+	resumes, err := hh.GetMineResumes()
+	if err != nil {
+		logger.Fatal("getting mine resumes", zap.Error(err))
+	}
+
+	logger.Info("getting mine resumes", zap.Int("count", resumes.Len()))
+
+	selectedResume := resumes.FindByTitle(config.Apply.Resume)
+	if selectedResume == nil {
+		logger.Fatal("resume with given title not found",
+			zap.Any("existed resumes titles", resumes.Titles()),
+			zap.String("resume title", config.Apply.Resume),
+		)
 	}
 
 	logger.Info("starting the search", zap.String("search", config.Search.Text))
 
-	vacancies, err := getVacancies(hh, config, cmd, logger)
+	vacancies, err := getVacancies(hh, config, logger)
 	if err != nil {
 		logger.Fatal("getting available vacancies", zap.Error(err))
 	}
 
 	if vacancies.Len() == 0 {
-		logger.Info("exiting", zap.String("reason", "no vacancies left"))
+		logger.Info("exiting", zap.String("reason", "no vacancies found"))
+		return
+	}
+
+	filters := prepareFilters(ctx, cmd, hh, config, selectedResume, logger)
+
+	filtered, err := filters.RunFilters(ctx, vacancies)
+	if err != nil {
+		logger.Fatal("filtering failed", zap.Error(err))
+	}
+	vacancies = filtered
+
+	if vacancies.Len() == 0 {
+		logger.Info("exiting", zap.String("reason", "no vacancies left after filters"))
 		return
 	}
 
@@ -117,7 +152,7 @@ func run(cmd *cobra.Command) {
 
 		logger.Info("current list of vacancies", zap.Int("count", vacancies.Len()))
 
-		if err := handleAction(action, hh, logger, config, vacancies); err != nil {
+		if err := handleAction(action, hh, logger, config, vacancies, selectedResume); err != nil {
 			if errors.Is(err, errExit) {
 				return
 			}
@@ -126,15 +161,15 @@ func run(cmd *cobra.Command) {
 	}
 }
 
-func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies) error {
+func handleAction(action string, hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume) error {
 	switch action {
 	case PromptYes:
-		return apply(hh, *logger, config.Apply.Resume, vacancies, config.Apply.Message)
+		return apply(hh, *logger, resume, vacancies, config.Apply.Message)
 	case PromptNo:
 		logger.Info("exiting", zap.String("reason", "got no from prompt"))
 		return errExit
 	case PromptManualApply:
-		return manualApply(hh, logger, config, vacancies)
+		return manualApply(hh, logger, config, vacancies, resume)
 	case PromptReportByEmployers:
 		pretty, _ := json.MarshalIndent(vacancies.ReportByEmployer(), "", "  ")
 		logger.Info(string(pretty), zap.Int("vacancies count", vacancies.Len()))
@@ -165,28 +200,23 @@ func resolveToken(config *Config) (string, error) {
 		return "", errors.New("headhunter token file is not configured")
 	}
 
-	tokenBytes, err := os.ReadFile(tokenFile)
-	if err != nil {
-		return "", fmt.Errorf("reading token file %q: %w", tokenFile, err)
-	}
-
-	token := strings.TrimSpace(string(tokenBytes))
-	if token == "" {
-		return "", fmt.Errorf("token file %q is empty", tokenFile)
-	}
-
-	return token, nil
+	return secrets.Load(secrets.Source{
+		Name: "headhunter token",
+		File: tokenFile,
+	})
 }
 
-func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies) error {
+func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vacancies *headhunter.Vacancies, resume *headhunter.Resume) error {
 	for {
 		items := make([]string, 0)
 		v := make([]*headhunter.Vacancy, 0)
 
 		for _, vc := range vacancies.Items {
-			items = append(items, fmt.Sprintf("%s %s / %s / %s",
-				vc.ID, vc.Name, vc.Employer.Name, vc.AlternateURL),
+			label := fmt.Sprintf("%s %s / %s / %s",
+				vc.ID, vc.Name, vc.Employer.Name, vc.AlternateURL,
 			)
+
+			items = append(items, label)
 		}
 
 		excludeFile := viper.GetString("exclude-file")
@@ -231,7 +261,7 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 				return fmt.Errorf("there is no such vacancy id %s", vacancyID)
 			}
 
-			if err = apply(hh, *logger, config.Apply.Resume, &headhunter.Vacancies{Items: v}, config.Apply.Message); err != nil {
+			if err = apply(hh, *logger, resume, &headhunter.Vacancies{Items: v}, config.Apply.Message); err != nil {
 				return err
 			}
 
@@ -240,84 +270,171 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 	}
 }
 
-func apply(hh *headhunter.Client, logger zap.Logger, resumeName string, vacancies *headhunter.Vacancies, message string) error {
-	resumes, err := hh.GetMineResumes()
-	if err != nil {
-		return err
-	}
+func apply(hh *headhunter.Client, logger zap.Logger, resume *headhunter.Resume, vacancies *headhunter.Vacancies, defaultMessage string) error {
+	for _, vacancy := range vacancies.Items {
+		message := vacancy.AI.Message
+		if message == "" {
+			message = defaultMessage
+		}
 
-	logger.Info("getting mine resumes", zap.Int("count", resumes.Len()))
+		if message == "" {
+			message = defaultFallbackMessage
+			logger.Warn("falling back to default built-in message",
+				zap.String("vacancy_id", vacancy.ID),
+				zap.String("hint", "specify message in apply section"),
+			)
+		}
 
-	resume := resumes.FindByTitle(resumeName)
+		if err := hh.ApplyWithMessage(resume, vacancy, message); err != nil {
+			return err
+		}
 
-	if resume == nil {
-		logger.Fatal("resume with given title not found",
-			zap.Any("existed resumes titles", resumes.Titles()),
-			zap.String("resume title", resumeName),
+		logger.Info("successfully applied to vacancy",
+			zap.String("vacancy_id", vacancy.ID),
+			zap.String("vacancy_name", vacancy.Name),
 		)
 	}
 
-	err = hh.Apply(resume, vacancies, message)
-	if err != nil {
-		return err
-	}
-
 	logger.Info("successfully applied to vacancies", zap.Int("count", vacancies.Len()))
-
 	return nil
 }
 
+func newAIMatcher(ctx context.Context, cfg *AIConfig, logger *zap.Logger) (ai.Matcher, error) {
+	provider := strings.TrimSpace(strings.ToLower(cfg.Provider))
+	if provider != "" && provider != "gemini" {
+		return nil, fmt.Errorf("unsupported ai provider: %s", cfg.Provider)
+	}
+
+	apiKey, err := secrets.Load(secrets.Source{
+		Name: "gemini api key",
+		File: cfg.Gemini.APIKeyFile,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w (set ai.gemini.api-key-file or GEMINI_API_KEY_FILE)", err)
+	}
+
+	genLogger := logger.With(
+		zap.String("provider", "gemini"),
+		zap.String("model", cfg.Gemini.Model),
+		zap.Int("ai_retry_attempts", cfg.Gemini.MaxRetries),
+	)
+
+	generator, err := gemini.NewGenerator(ctx, apiKey, cfg.Gemini.Model, cfg.Gemini.MaxRetries, genLogger)
+	if err != nil {
+		return nil, err
+	}
+
+	minScore := cfg.MinimumFitScore
+	if minScore < 0 {
+		minScore = 0
+	}
+
+	matcherLogger := logger.With(
+		zap.String("provider", "gemini"),
+		zap.String("model", cfg.Gemini.Model),
+		zap.Float64("minimum_fit_score", minScore),
+	)
+
+	matcher := gemini.NewMatcher(generator, minScore, cfg.Gemini.MaxLogLength, matcherLogger)
+	if cfg.Gemini.PromptOverrides != nil {
+		matcher.SetPromptOverrides(gemini.PromptOverrides{
+			ExtraCriteria:     cfg.Gemini.PromptOverrides.ExtraCriteria,
+			DealBreakers:      cfg.Gemini.PromptOverrides.DealBreakers,
+			CustomKeywords:    cfg.Gemini.PromptOverrides.CustomKeywords,
+			Tone:              cfg.Gemini.PromptOverrides.Tone,
+			RegionConstraints: cfg.Gemini.PromptOverrides.RegionConstraints,
+			UserInstructions:  cfg.Gemini.PromptOverrides.UserInstructions,
+		})
+	}
+
+	return matcher, nil
+}
+
 // getVacancies returns a list of vacancies that match the config.
-// TODO: need refactoring.
-func getVacancies(hh *headhunter.Client, config *Config, cmd *cobra.Command, logger *zap.Logger) (*headhunter.Vacancies, error) {
+func getVacancies(hh *headhunter.Client, config *Config, logger *zap.Logger) (*headhunter.Vacancies, error) {
 	results, err := hh.Search(config.Search)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
 
 	logger.Info("getting vacancies", zap.Int("count", results.Len()))
-
-	negotiations, err := hh.GetNegotiations()
-	if err != nil {
-		return nil, fmt.Errorf("get my negotiations: %w", err)
-	}
-
-	logger.Info("excluding vacancies with test. It is impossible to apply them",
-		zap.Any("excluded vacancies", results.ExcludeWithTest()),
-		zap.Int("vacancies left", results.Len()),
-	)
-
-	if cmd.Flag("do-not-exclude-applied").Value.String() == "true" {
-		logger.Info("ignoring already applied vacancies", zap.String("reason", forceFlagSetMsg))
-	} else {
-		excluded := results.Exclude(headhunter.VacancyIDField, negotiations.VacanciesIDs())
-		logger.Info("excluding vacancies based on my negotiations",
-			zap.Any("excluded vacancies", excluded),
-			zap.Int("vacancies left", results.Len()),
-		)
-	}
-
-	if config.Apply.Exclude != nil && len(config.Apply.Exclude.Employers) > 0 {
-		excluded := results.Exclude(headhunter.VacancyEmployerIDField, config.Apply.Exclude.Employers)
-		logger.Info("excluding vacancies by employers",
-			zap.Any("excluded employers", config.Apply.Exclude.Employers),
-			zap.Any("excluded vacancies", excluded),
-			zap.Int("vacancies left", results.Len()),
-		)
-	}
-	excludeFile := viper.GetString("exclude-file")
-	if excludeFile != "" {
-		excluded, err := headhunter.GetExludedVacanciesFromFile(excludeFile)
-		if err != nil {
-			return nil, fmt.Errorf("getting exluded vacancies from file: %w", err)
-		}
-
-		excludedVacancies := results.Exclude(headhunter.VacancyIDField, excluded.VacanciesIDs())
-		logger.Info("excluding vacancies based on exclude file",
-			zap.Any("excluded vacancies", excludedVacancies),
-			zap.Int("vacancies left", results.Len()),
-		)
-	}
-
 	return results, nil
+}
+
+func prepareFilters(ctx context.Context, cmd *cobra.Command, hh *headhunter.Client, config *Config, resume *headhunter.Resume, logger *zap.Logger) *filtering.Filtering {
+	aiFilter, err := prepareAIFilter(ctx, hh, config.AI, resume, logger, config.ExcludeFile)
+	if err != nil {
+		logger.Warn("skipping AI filter", zap.Error(err))
+		aiFilter.Disable("skipping by error")
+	}
+
+	steps := []filtering.Filter{
+		filtering.NewWithTest(),
+		prepareAppliedHistoryFilter(cmd, hh, logger),
+		filtering.NewExludedEmployers(config.Apply.Exclude.Employers),
+		filtering.NewExcludeFile(config.ExcludeFile),
+		aiFilter,
+	}
+
+	if !aiFilter.IsEnabled() {
+		aiFilter.Disable("skipping by switch")
+	}
+
+	return filtering.New(steps, logger)
+}
+
+func prepareAppliedHistoryFilter(cmd *cobra.Command, client *headhunter.Client, logger *zap.Logger) filtering.Filter {
+	ignore := false
+	if cmd != nil {
+		flag := cmd.Flag("do-not-exclude-applied")
+		if flag != nil && strings.EqualFold(flag.Value.String(), "true") {
+			ignore = true
+		}
+	}
+
+	cfg := &filtering.AppliedHistoryConfig{Ignore: ignore}
+	deps := &filtering.AppliedHistoryDeps{
+		HH:     client,
+		Logger: logger,
+	}
+
+	return filtering.NewAppliedHistory(cfg, deps)
+}
+
+func prepareAIFilter(ctx context.Context, client *headhunter.Client, config *AIConfig, resume *headhunter.Resume, logger *zap.Logger, excludeFile string) (filtering.Filter, error) {
+	disabled := filtering.NewAIFit(&filtering.AIFitFilterConfig{
+		Enabled: false,
+	}, nil)
+
+	if config == nil || !config.Enabled {
+		return disabled, nil
+	}
+
+	if config.Gemini == nil {
+		return disabled, fmt.Errorf("gemini configuration is required when ai filter is enabled")
+	}
+
+	aiConfig := &filtering.AIFitFilterConfig{
+		Enabled:         config.Enabled,
+		Provider:        config.Provider,
+		MinimumFitScore: config.MinimumFitScore,
+		Gemini: &filtering.AIGeminiConfig{
+			Model:        config.Gemini.Model,
+			MaxRetries:   config.Gemini.MaxRetries,
+			MaxLogLength: config.Gemini.MaxLogLength,
+		},
+	}
+
+	matcher, err := newAIMatcher(ctx, config, logger)
+	if err != nil {
+		return disabled, fmt.Errorf("building ai matcher: %w", err)
+	}
+
+	return filtering.NewAIFit(aiConfig, &filtering.AIFitFilterDeps{
+		Logger:      logger,
+		HH:          client,
+		Resume:      resume,
+		Matcher:     matcher,
+		ExcludeFile: excludeFile,
+	}), nil
 }

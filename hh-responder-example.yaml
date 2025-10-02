@@ -36,6 +36,31 @@ apply:
       # Test employer
       - 3331116
 
+# Optional AI assistance configuration for resume-vacancy matching.
+ai:
+  enabled: false
+  provider: gemini
+  minimum-fit-score: 0.6
+  gemini:
+    # The Gemini API key must be stored in a file. Configure the path here or
+    # provide it via the GEMINI_API_KEY_FILE environment variable.
+    # api-key-file: /path/to/gemini-api-key
+    model: gemini-2.5-pro
+    # Number of attempts per request on transient or short quota errors (>=1).
+    max-retries: 3
+    # Maximum number of characters logged for prompt/response previews.
+    max-log-length: 200
+    # Optional natural-language overrides for the Gemini prompt. They are
+    # advisory-only and cannot relax system or template rules.
+    # prompt-overrides:
+    #   extra-criteria: "Highlight cross-team collaboration examples"
+    #   deal-breakers: "No relocation, contract roles"
+    #   custom-keywords: "Terraform, Kubernetes"
+    #   tone: "Confident"
+    #   region-constraints: "EMEA preferred"
+    #   user-instructions: |
+    #     Focus on remote work experience and mention evening availability in CET.
+
 # Optional custom user-agent header to send with requests to hh.ru API.
 # Defaults to the built-in hh-responder identifier when omitted.
 user-agent: "spigell/hh-responder (spigelly@gmail.com)"

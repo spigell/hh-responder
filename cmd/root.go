@@ -25,6 +25,31 @@ type Config struct {
 			Employers []string
 		}
 	}
+	AI *AIConfig `mapstructure:"ai"`
+}
+
+type AIConfig struct {
+	Enabled         bool          `mapstructure:"enabled"`
+	Provider        string        `mapstructure:"provider"`
+	MinimumFitScore float64       `mapstructure:"minimum-fit-score"`
+	Gemini          *GeminiConfig `mapstructure:"gemini"`
+}
+
+type GeminiConfig struct {
+	APIKeyFile      string                       `mapstructure:"api-key-file"`
+	Model           string                       `mapstructure:"model"`
+	MaxRetries      int                          `mapstructure:"max-retries"`
+	MaxLogLength    int                          `mapstructure:"max-log-length"`
+	PromptOverrides *GeminiPromptOverridesConfig `mapstructure:"prompt-overrides"`
+}
+
+type GeminiPromptOverridesConfig struct {
+	ExtraCriteria     string `mapstructure:"extra-criteria"`
+	DealBreakers      string `mapstructure:"deal-breakers"`
+	CustomKeywords    string `mapstructure:"custom-keywords"`
+	Tone              string `mapstructure:"tone"`
+	RegionConstraints string `mapstructure:"region-constraints"`
+	UserInstructions  string `mapstructure:"user-instructions"`
 }
 
 var (
@@ -45,6 +70,10 @@ func Execute() error {
 func init() {
 	if err := viper.BindEnv("token-file", "HH_TOKEN_FILE"); err != nil {
 		log.Fatalf("binding HH_TOKEN_FILE environment variable: %v", err)
+	}
+
+	if err := viper.BindEnv("ai.gemini.api-key-file", "GOOGLE_API_KEY_FILE", "GEMINI_API_KEY_FILE"); err != nil {
+		log.Fatalf("binding GEMINI_API_KEY_FILE environment variable: %v", err)
 	}
 
 	cobra.OnInitialize(initConfig)

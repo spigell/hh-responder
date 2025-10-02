@@ -18,6 +18,9 @@ spec:
     - name: codex
       persistentVolumeClaim:
         claimName: codex-home
+    - name: hh-token
+      secret:
+        secretName: hh-token
     - name: tmp
       emptyDir: {}
   containers:
@@ -36,3 +39,6 @@ spec:
       volumeMounts:
         - name: codex
           mountPath: /home/spigell/.codex
+        - name: hh-token
+          mountPath: /secrets/hh-token
+          readOnly: true

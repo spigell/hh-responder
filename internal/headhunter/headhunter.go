@@ -2,6 +2,7 @@ package headhunter
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -26,7 +27,7 @@ type Client struct {
 	APIURL     string
 }
 
-func New(ctx context.Context, logger *zap.Logger, token string) *Client {
+func New(ctx context.Context, token string, logger *zap.Logger) *Client {
 	return &Client{
 		ctx:    ctx,
 		token:  token,
@@ -49,10 +50,21 @@ func (c *Client) GetMineResumes() (*Resumes, error) {
 
 func (c *Client) Apply(resume *Resume, vacancies *Vacancies, message string) error {
 	for _, v := range vacancies.Items {
-		if err := c.postNegotiation(resume.ID, v.ID, message); err != nil {
+		if err := c.ApplyWithMessage(resume, v, message); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (c *Client) ApplyWithMessage(resume *Resume, vacancy *Vacancy, message string) error {
+	if resume == nil {
+		return fmt.Errorf("resume is required")
+	}
+	if vacancy == nil {
+		return fmt.Errorf("vacancy is required")
+	}
+
+	return c.postNegotiation(resume.ID, vacancy.ID, message)
 }
