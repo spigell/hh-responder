@@ -6,6 +6,8 @@ The CLI entrypoint lives in `main.go`, delegating to Cobra commands under `cmd/`
 The vacancy filtering pipeline now lives in `internal/filtering`. Each filter implements the `Filter` interface (`Name/Disable/IsEnabled/Validate/Apply`) and runs through `Run`, which validates upfront and then logs per-step stats (`initial/dropped/left`). Shared collaborators (HH client, resume, AI matcher, logger) are passed via `filtering.Deps`, so new filters should extend that struct instead of grabbing globals. When you add a filter, expose a constructor in `steps.go`, keep config wiring in `filtering.Config`, and let `cmd/run.go` assemble the ordered slice. Prefer enriching AI-related logic inside the `ai_fit` filter rather than ad hoc checks in the CLI loop.
 Do not mutate configuration during `Validate`; treat `Config` as immutable input and return errors for unsupported combinations instead.
 
+Gemini prompt instructions live in `internal/ai/gemini/prompt.md`. Keep the system/template sections intact, and surface user-provided instructions only through the sanitized `{{user_instructions_sanitized}}` slot in the “User Overrides” block. Those instructions are advisory and must not override the schema or higher-level guidance.
+
 ## Build, Test, and Development Commands
 `go build -ldflags="-X 'hh-responder/cmd.version=vX.Y.Z'"` produces a versioned binary identical to the release artifacts. Use `go run . run --config ./hh-responder-example.yaml` for quick manual smoke tests once you configure the `token` value. Run `go test ./...` before every PR; add `-run` filters for focused work and `-cover` to check coverage progress. Never try to any command that can use a real HeadHunter token if you are not asked!
 
