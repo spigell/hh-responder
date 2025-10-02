@@ -143,7 +143,6 @@ func TestMatcherUserInstructionsSanitization(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &stubGenerator{response: `{"fit": true, "score": 0.9, "reason": "Matches skills", "message": "Hi"}`}
 			matcher := NewMatcher(stub, 0.5, 0, zap.NewNop())
