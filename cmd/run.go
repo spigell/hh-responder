@@ -243,7 +243,7 @@ func manualApply(hh *headhunter.Client, logger *zap.Logger, config *Config, vaca
 				return err
 			}
 
-			excluded.Append(vacancies.ToExcluded())
+			excluded.Append(vacancies.ToExcluded(headhunter.ExcludeReasonManualApply))
 
 			if err = excluded.ToFile(excludeFile); err != nil {
 				return err

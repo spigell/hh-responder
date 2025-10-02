@@ -12,6 +12,9 @@ import (
 const (
 	VacancyIDField         = "ID"
 	VacancyEmployerIDField = "EmployerID"
+
+	ExcludeReasonManualApply = "manual_apply"
+	excludeReasonAIFallback  = "ai_rejected"
 )
 
 type Vacancies struct {
@@ -114,6 +117,7 @@ type ExcludedVacancy struct {
 	URL          string
 	EmployerName string
 	ExcludedAt   time.Time
+	Reason       string
 }
 
 func (v *Vacancies) DumpToTmpFile() (string, error) {
@@ -131,14 +135,23 @@ func (v *Vacancies) DumpToTmpFile() (string, error) {
 	return file.Name(), nil
 }
 
-func (v *Vacancies) ToExcluded() *ExcludedVacancies {
+func (v *Vacancies) ToExcluded(reason string) *ExcludedVacancies {
 	excluded := &ExcludedVacancies{}
 	for _, vacancy := range v.Items {
+		vacancyReason := reason
+		if vacancyReason == "" && vacancy.AI != nil {
+			vacancyReason = vacancy.AI.Reason
+			if vacancyReason == "" {
+				vacancyReason = excludeReasonAIFallback
+			}
+		}
+
 		excluded.Items = append(excluded.Items, &ExcludedVacancy{
 			ID:           vacancy.ID,
 			URL:          vacancy.AlternateURL,
 			EmployerName: vacancy.Employer.Name,
 			ExcludedAt:   time.Now().UTC(),
+			Reason:       vacancyReason,
 		})
 	}
 	return excluded
