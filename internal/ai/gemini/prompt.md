@@ -17,7 +17,7 @@ Task and rubric:
 - Seniority/scope (0.10)
 
 Language:
-- Use the vacancy’s predominant language; otherwise English.
+- Use the vacancy’s predominant language; otherwise Russian.
 
 
 Candidate message (cover letter):
