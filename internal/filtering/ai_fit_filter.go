@@ -3,7 +3,6 @@ package filtering
 import (
 	"context"
 	"fmt"
-	"maps"
 	"strings"
 
 	"go.uber.org/zap"
@@ -14,12 +13,10 @@ import (
 )
 
 type aiFitFilter struct {
-	enabled     bool
-	reason      string
-	config      *AIFitFilterConfig
-	assessments map[string]*ai.FitAssessment
-
-	deps *AIFitFilterDeps
+	enabled bool
+	reason  string
+	config  *AIFitFilterConfig
+	deps    *AIFitFilterDeps
 }
 
 type AIFitFilterDeps struct {
@@ -91,19 +88,15 @@ func (f *aiFitFilter) Apply(ctx context.Context, v *headhunter.Vacancies) (*head
 		return v, Step{}, fmt.Errorf("get resume details: %w", err)
 	}
 
-	assessments := f.evaluateVacanciesWithMatcher(ctx, resumeDetails, v)
-
-	f.assessments = make(map[string]*ai.FitAssessment, len(assessments))
-	maps.Copy(f.assessments, assessments)
+	f.applyMatcher(ctx, resumeDetails, v)
 
 	left := v.Len()
 	return v, Step{Initial: initial, Dropped: initial - left, Left: left}, nil
 }
 
-func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume map[string]any, vacancies *headhunter.Vacancies) map[string]*ai.FitAssessment {
+func (f *aiFitFilter) applyMatcher(ctx context.Context, resume map[string]any, vacancies *headhunter.Vacancies) {
 	initial := vacancies.Len()
 	approved := make([]*headhunter.Vacancy, 0, initial)
-	assessments := make(map[string]*ai.FitAssessment)
 
 	for _, vacancy := range vacancies.Items {
 		detailed := vacancy
@@ -129,7 +122,15 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 			continue
 		}
 
-		if !assessment.Fit {
+		detailed.AI = &headhunter.AIAssessment{
+			Fit:     assessment.Fit,
+			Score:   assessment.Score,
+			Reason:  assessment.Reason,
+			Message: assessment.Message,
+			Raw:     assessment.Raw,
+		}
+
+		if !detailed.AI.Fit {
 			f.deps.Logger.Info("vacancy rejected by AI provider",
 				zap.String("vacancy_id", vacancy.ID),
 				zap.Float64("ai_score", assessment.Score),
@@ -150,15 +151,7 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 			zap.Float64("ai_score", assessment.Score),
 		)
 
-		detailed.AI = &headhunter.AIAssessment{
-			Fit:     assessment.Fit,
-			Score:   assessment.Score,
-			Reason:  assessment.Reason,
-			Message: assessment.Message,
-			Raw:     assessment.Raw,
-		}
 		approved = append(approved, detailed)
-		assessments[detailed.ID] = assessment
 	}
 
 	vacancies.Items = approved
@@ -167,8 +160,6 @@ func (f *aiFitFilter) evaluateVacanciesWithMatcher(ctx context.Context, resume m
 		zap.Int("initial_vacancies", initial),
 		zap.Int("approved_vacancies", len(approved)),
 	)
-
-	return assessments
 }
 
 func (f *aiFitFilter) appendToExcludeFile(vacancy *headhunter.Vacancy, reason string) error {
