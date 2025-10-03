@@ -182,7 +182,7 @@ func (f *aiFitFilter) appendToExcludeFile(vacancy *headhunter.Vacancy, reason st
 		return fmt.Errorf("load excluded vacancies: %w", err)
 	}
 
-	toAppend := (&headhunter.Vacancies{Items: []*headhunter.Vacancy{vacancy}}).ToExcluded(reason)
+	toAppend := (&headhunter.Vacancies{Items: []*headhunter.Vacancy{vacancy}}).ToExcluded(headhunter.ExcludeActorAI, reason)
 	excluded.Append(toAppend)
 
 	if err := excluded.ToFile(path); err != nil {

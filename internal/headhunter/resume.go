@@ -24,7 +24,7 @@ type ResumeDetails struct {
 func (c *Client) getResumes(id string) (*Resumes, error) {
 	apiURLMineResumes := fmt.Sprintf("%s/resumes/%s", c.APIURL, id)
 
-	items, err := c.GetItems(apiURLMineResumes, nil)
+	items, err := c.GetItems(apiURLMineResumes, nil, 0)
 	if err != nil {
 		return nil, err
 	}

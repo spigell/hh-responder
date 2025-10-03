@@ -6,6 +6,8 @@
 search:
   clusters: false
   order_by: publication_time
+  # Maximum number of vacancies to fetch (0 means no limit).
+  limit: 100
   areas: 
     - 113 # Russia
     - 1   # Moscow

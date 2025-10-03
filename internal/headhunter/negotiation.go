@@ -34,7 +34,7 @@ func (c *Client) GetNegotiations() (*Negotations, error) {
 	// Set per_page max as possible. It should be faster.
 	q.Add("per_page", perPage)
 
-	items, err := c.GetItems(apiURLMineNegotations, q)
+	items, err := c.GetItems(apiURLMineNegotations, q, 0)
 	if err != nil {
 		return nil, err
 	}
