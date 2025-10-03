@@ -25,6 +25,7 @@ type SearchParams struct {
 	PerPage     string   `yaml:"per_page" mapstructure:"per_page"`
 	Experience  string   `yaml:"experience"`
 	Period      uint     `yaml:"period"`
+	Limit       int      `yaml:"limit" mapstructure:"limit" hhparam:"-"`
 }
 
 func (c *Client) search(params *SearchParams) (*Vacancies, error) {
@@ -38,7 +39,7 @@ func (c *Client) search(params *SearchParams) (*Vacancies, error) {
 	q := buildParams(params)
 	apiURLSearch := fmt.Sprintf("%s%s", c.APIURL, SearchPath)
 
-	items, err := c.GetItems(apiURLSearch, q)
+	items, err := c.GetItems(apiURLSearch, q, params.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +67,9 @@ func buildParams(params *SearchParams) url.Values {
 		if key == "" {
 			// Failover to default tag if our tag do not exist.
 			key = field.Tag.Get("yaml")
+		}
+		if key == "-" {
+			continue
 		}
 		kind := field.Type.Kind()
 		switch kind {

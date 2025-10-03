@@ -30,8 +30,8 @@ type ItemResponse struct {
 
 type Item any
 
-// GetItems makes GET request to HeadHunter API and return items from all pages.
-func (c *Client) GetItems(url string, q url.Values) ([]Item, error) {
+// GetItems makes GET request to HeadHunter API and returns items honoring the optional limit.
+func (c *Client) GetItems(url string, q url.Values, limit int) ([]Item, error) {
 	var items []Item
 
 	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, url, nil)
@@ -57,8 +57,14 @@ func (c *Client) GetItems(url string, q url.Values) ([]Item, error) {
 	c.logger.Debug("got response from HH.ru", zap.Int("pages", response.Pages), zap.Int("max items per page", response.PerPage))
 
 	items = append(items, response.Items...)
+	if limit > 0 && len(items) >= limit {
+		return items[:limit], nil
+	}
 
 	for response.Page < (response.Pages - 1) {
+		if limit > 0 && len(items) >= limit {
+			break
+		}
 		c.logger.Debug("additional request neeeded", zap.String("reason", fmt.Sprintf(
 			"current page (%d) < all page count (%d)", response.Page+1, response.Pages),
 		))
@@ -74,6 +80,10 @@ func (c *Client) GetItems(url string, q url.Values) ([]Item, error) {
 		}
 
 		items = append(items, response.Items...)
+		if limit > 0 && len(items) >= limit {
+			items = items[:limit]
+			break
+		}
 	}
 
 	return items, nil
