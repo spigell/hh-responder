@@ -24,8 +24,8 @@ spec:
   # ---- Primary application container ----
   containers:
     - name: workbench
-      # Pinned to tag v0.42.0-dce3a2 (digest sha256:30ff0432e12ce60eecd8c875c0f1f00d4f76cacf9bcc775524c9c341762a803c)
-      image: ghcr.io/spigell/codex-workbench@sha256:30ff0432e12ce60eecd8c875c0f1f00d4f76cacf9bcc775524c9c341762a803c
+      # Pinned to tag v0.44.0-308360 (digest sha256:fd6198d348042dbafe98282a55a3bda0621cac9bbf958cbbdfcc9a2991ae4196)
+      image: ghcr.io/spigell/codex-workbench@sha256:fd6198d348042dbafe98282a55a3bda0621cac9bbf958cbbdfcc9a2991ae4196
       workingDir: /project
       command:
         - /bin/bash
